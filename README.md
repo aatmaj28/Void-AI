@@ -113,4 +113,21 @@ open http://localhost:3000
 
 [Report Bug](https://github.com/yourusername/void-ai/issues) • [Request Feature](https://github.com/yourusername/void-ai/issues)
 
+<br/>
+
+---
+
+### 👨‍💻 Developers
+
+**Aatmaj Amol Salunke** — [salunke.aa@northeastern.edu](mailto:salunke.aa@northeastern.edu)
+
+**Vijwal Mahendrakar** — [mahendrakar.v@northeastern.edu](mailto:mahendrakar.v@northeastern.edu)
+
+<br/>
+
+<sub>
+Built for <b>CS5130 — Applied Programming and Data Processing for AI</b><br/>
+Northeastern University • Spring 2026
+</sub>
+
 </div>
