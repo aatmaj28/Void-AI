@@ -116,7 +116,7 @@ open http://localhost:3000
 
 <sub>
 Built for <b>CS5130 — Applied Programming and Data Processing for AI</b><br/>
-Northeastern University • Spring 2026
+Northeastern University • Spring 2026ygugygugyg
 </sub>
 
 </div>
