@@ -90,17 +90,6 @@ open http://localhost:3000
 
 <br/>
 
-## API Keys Required (Free Tiers)
-
-| Service | Free Limit | Get Key |
-|---------|------------|---------|
-| Financial Modeling Prep | 250/day | [Get Key →](https://financialmodelingprep.com) |
-| Finnhub | 60/min | [Get Key →](https://finnhub.io) |
-| Anthropic | Pay-as-you-go | [Get Key →](https://console.anthropic.com) |
-| SEC EDGAR | Unlimited | No key needed |
-
-<br/>
-
 ---
 
 <div align="center">
