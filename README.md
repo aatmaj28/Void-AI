@@ -2,7 +2,7 @@
 
 <img src="docs/assets/void-logo.png" alt="Void AI" width="120"/>
 
-# VOID.AI
+# VOID AI
 
 ### We find alpha in the void
 
