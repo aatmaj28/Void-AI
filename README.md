@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/voidai.png" alt="Void AI" width="240"/>
+<img src="assets/voidai.png" alt="Void AI" width="500"/>
 
 # VOID AI
 
