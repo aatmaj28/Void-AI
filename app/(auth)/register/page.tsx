@@ -80,14 +80,11 @@ export default function RegisterPage() {
                 </Link>
               </Button>
 
-              {/* Google Sign Up Button */}
+              {/* Google Sign Up Button - Disabled for now */}
               <Button
                 variant="outline"
-                className="w-full h-12 bg-background hover:bg-accent text-foreground border-border hover:border-primary/50 transition-all duration-300"
-                onClick={() => {
-                  // Use NextAuth signIn for Google OAuth
-                  window.location.href = "/api/auth/signin/google"
-                }}
+                className="w-full h-12 bg-muted text-muted-foreground border-border cursor-not-allowed opacity-50"
+                disabled
               >
                 <div className="flex items-center justify-center gap-3">
                   <svg className="h-5 w-5" viewBox="0 0 24 24">
