@@ -4,6 +4,7 @@ import { Inter, JetBrains_Mono } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
 import { ThemeProvider } from "@/components/theme-provider"
 import { UserProvider } from "@/lib/user-context"
+import { PageTransition } from "@/components/page-transition"
 import "./globals.css"
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" })
@@ -58,7 +59,9 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <UserProvider>
-            {children}
+            <PageTransition>
+              {children}
+            </PageTransition>
           </UserProvider>
         </ThemeProvider>
         <Analytics />
