@@ -1,11 +1,13 @@
 "use client"
 
 import Link from "next/link"
+import { useSearchParams } from "next/navigation"
 import { useTheme } from "next-themes"
 import { useState, useEffect } from "react"
-import { Sun, Moon, Mail } from "lucide-react"
+import { Sun, Moon, Mail, AlertCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Logo } from "@/components/logo"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 
 function AnimatedBackground() {
     return (
@@ -19,8 +21,10 @@ function AnimatedBackground() {
 }
 
 export default function LoginPage() {
+    const searchParams = useSearchParams()
     const { theme, setTheme } = useTheme()
     const [mounted, setMounted] = useState(false)
+    const error = searchParams.get("error")
 
     useEffect(() => {
         setMounted(true)
@@ -67,6 +71,19 @@ export default function LoginPage() {
                     </div>
 
                     <div className="bg-card/80 backdrop-blur-sm border border-border rounded-2xl p-8 shadow-2xl">
+                        {error === "Configuration" && (
+                            <Alert variant="destructive" className="mb-4">
+                                <AlertCircle className="h-4 w-4" />
+                                <AlertTitle>Server configuration error</AlertTitle>
+                                <AlertDescription>
+                                    Google sign-in is not configured correctly. On Vercel, set{" "}
+                                    <strong>AUTH_SECRET</strong> (or NEXTAUTH_SECRET),{" "}
+                                    <strong>NEXTAUTH_URL</strong> (e.g. https://void-ai-nine.vercel.app),{" "}
+                                    <strong>GOOGLE_CLIENT_ID</strong>, and{" "}
+                                    <strong>GOOGLE_CLIENT_SECRET</strong> in Project Settings → Environment Variables, then redeploy.
+                                </AlertDescription>
+                            </Alert>
+                        )}
                         <div className="space-y-4">
                             {/* Email Login Button */}
                             <Button
