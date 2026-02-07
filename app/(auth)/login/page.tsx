@@ -1,5 +1,6 @@
 "use client"
 
+import { Suspense } from "react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { useTheme } from "next-themes"
@@ -20,7 +21,7 @@ function AnimatedBackground() {
     )
 }
 
-export default function LoginPage() {
+function LoginPageContent() {
     const searchParams = useSearchParams()
     const { theme, setTheme } = useTheme()
     const [mounted, setMounted] = useState(false)
@@ -158,5 +159,24 @@ export default function LoginPage() {
                 </div>
             </main>
         </div>
+    )
+}
+
+export default function LoginPage() {
+    return (
+        <Suspense fallback={
+            <div className="min-h-screen flex flex-col bg-background">
+                <header className="sticky top-0 z-50 w-full border-b border-border bg-background/80 backdrop-blur-md">
+                    <div className="container mx-auto flex h-16 items-center justify-between px-4">
+                        <Logo />
+                    </div>
+                </header>
+                <main className="flex-1 flex items-center justify-center">
+                    <div className="animate-pulse rounded-2xl h-96 w-full max-w-md bg-muted/50" />
+                </main>
+            </div>
+        }>
+            <LoginPageContent />
+        </Suspense>
     )
 }
