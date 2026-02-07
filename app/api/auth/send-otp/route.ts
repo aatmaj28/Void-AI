@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import nodemailer from "nodemailer"
-import { otpStore } from "@/lib/auth-store"
+import { supabase } from "@/lib/supabase"
 
 // Generate 6-digit OTP
 function generateOTP(): string {
@@ -20,10 +20,25 @@ export async function POST(request: NextRequest) {
 
     // Generate OTP
     const otp = generateOTP()
-    const expiresAt = Date.now() + 5 * 60 * 1000 // 5 minutes
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString() // 5 minutes
 
-    // Store OTP
-    otpStore.set(email, { code: otp, expiresAt })
+    // Delete any existing OTP for this email
+    await supabase.from("otps").delete().eq("email", email)
+
+    // Store OTP in Supabase
+    const { error: insertError } = await supabase.from("otps").insert({
+      email,
+      code: otp,
+      expires_at: expiresAt
+    })
+
+    if (insertError) {
+      console.error("Failed to store OTP:", insertError)
+      return NextResponse.json(
+        { error: "Failed to send OTP" },
+        { status: 500 }
+      )
+    }
 
     // Configure nodemailer
     const transporter = nodemailer.createTransport({
