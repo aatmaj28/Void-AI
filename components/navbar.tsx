@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { useTheme } from "next-themes"
 import {
   Search,
@@ -33,6 +33,7 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Logo } from "@/components/logo"
 import { cn } from "@/lib/utils"
+import { useUser } from "@/lib/user-context"
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -44,7 +45,9 @@ const navItems = [
 
 export function Navbar() {
   const pathname = usePathname()
+  const router = useRouter()
   const { theme, setTheme } = useTheme()
+  const { user, logout, isLoading } = useUser()
   const [mounted, setMounted] = React.useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false)
   const [unreadAlerts] = React.useState(3)
@@ -52,6 +55,11 @@ export function Navbar() {
   React.useEffect(() => {
     setMounted(true)
   }, [])
+
+  const handleLogout = () => {
+    logout()
+    router.push("/login")
+  }
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border bg-background/80 backdrop-blur-md">
@@ -139,12 +147,16 @@ export function Navbar() {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
               <div className="px-2 py-1.5">
-                <p className="text-sm font-medium">Demo User</p>
-                <p className="text-xs text-muted-foreground">demo@void.ai</p>
+                <p className="text-sm font-medium">
+                  {user ? `${user.firstName} ${user.lastName}` : "Guest"}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {user?.email || "Not logged in"}
+                </p>
               </div>
               <DropdownMenuSeparator />
               <DropdownMenuItem asChild>
-                <Link href="/settings" className="cursor-pointer">
+                <Link href="/profile" className="cursor-pointer">
                   <User className="mr-2 h-4 w-4" />
                   Profile
                 </Link>
@@ -162,7 +174,10 @@ export function Navbar() {
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="cursor-pointer text-destructive focus:text-destructive">
+              <DropdownMenuItem
+                className="cursor-pointer text-destructive focus:text-destructive"
+                onClick={handleLogout}
+              >
                 <LogOut className="mr-2 h-4 w-4" />
                 Logout
               </DropdownMenuItem>

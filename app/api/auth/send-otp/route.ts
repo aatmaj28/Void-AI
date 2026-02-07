@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    // Email template with premium dark theme design
+    // Email template with premium light theme design
     const mailOptions = {
       from: `"Void AI" <${process.env.GMAIL_USER}>`,
       to: email,
@@ -68,24 +68,23 @@ export async function POST(request: NextRequest) {
               }
               body {
                 font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-                background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+                background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 50%, #f1f5f9 100%);
                 padding: 40px 20px;
                 min-height: 100vh;
               }
               .email-container {
                 max-width: 600px;
                 margin: 0 auto;
-                background: rgba(17, 24, 39, 0.95);
+                background: #ffffff;
                 border-radius: 24px;
                 overflow: hidden;
-                box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-                border: 1px solid rgba(102, 126, 234, 0.2);
+                box-shadow: 0 20px 60px rgba(0, 0, 0, 0.1);
+                border: 1px solid rgba(102, 126, 234, 0.15);
               }
               .header {
-                background: linear-gradient(135deg, rgba(102, 126, 234, 0.15) 0%, rgba(6, 182, 212, 0.15) 100%);
+                background: linear-gradient(135deg, #667eea 0%, #06b6d4 100%);
                 padding: 40px 30px;
                 text-align: center;
-                border-bottom: 1px solid rgba(102, 126, 234, 0.2);
                 position: relative;
                 overflow: hidden;
               }
@@ -96,84 +95,70 @@ export async function POST(request: NextRequest) {
                 left: -50%;
                 width: 200%;
                 height: 200%;
-                background: radial-gradient(circle, rgba(102, 126, 234, 0.1) 0%, transparent 70%);
-                animation: pulse 4s ease-in-out infinite;
+                background: radial-gradient(circle, rgba(255, 255, 255, 0.1) 0%, transparent 70%);
               }
-              @keyframes pulse {
-                0%, 100% { transform: scale(1); opacity: 0.5; }
-                50% { transform: scale(1.1); opacity: 0.8; }
-              }
-              .logo {
-                font-size: 36px;
-                font-weight: 900;
-                letter-spacing: 4px;
-                background: linear-gradient(135deg, #667eea 0%, #06b6d4 100%);
-                -webkit-background-clip: text;
-                -webkit-text-fill-color: transparent;
-                background-clip: text;
+              .logo-container {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 12px;
                 position: relative;
                 z-index: 1;
+              }
+              .logo-icon {
+                width: 48px;
+                height: 48px;
+              }
+              .logo-text {
+                font-size: 32px;
+                font-weight: 900;
+                letter-spacing: 3px;
+                color: #ffffff;
                 text-transform: uppercase;
               }
+              .logo-ai {
+                color: rgba(255, 255, 255, 0.85);
+                font-weight: 300;
+              }
               .tagline {
-                color: rgba(255, 255, 255, 0.6);
+                color: rgba(255, 255, 255, 0.9);
                 font-size: 14px;
-                margin-top: 8px;
-                letter-spacing: 2px;
+                margin-top: 12px;
+                letter-spacing: 1px;
                 position: relative;
                 z-index: 1;
               }
               .content {
                 padding: 50px 40px;
                 text-align: center;
+                background: #ffffff;
               }
               .title {
-                color: #ffffff;
+                color: #1e293b;
                 font-size: 28px;
                 font-weight: 700;
                 margin-bottom: 16px;
-                background: linear-gradient(135deg, #ffffff 0%, rgba(255, 255, 255, 0.8) 100%);
-                -webkit-background-clip: text;
-                -webkit-text-fill-color: transparent;
-                background-clip: text;
               }
               .subtitle {
-                color: rgba(255, 255, 255, 0.7);
+                color: #64748b;
                 font-size: 16px;
                 line-height: 1.6;
                 margin-bottom: 40px;
               }
               .otp-container {
-                background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(6, 182, 212, 0.1) 100%);
-                border: 2px solid rgba(102, 126, 234, 0.3);
+                background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+                border: 2px solid #e2e8f0;
                 border-radius: 16px;
                 padding: 30px;
                 margin: 30px 0;
                 position: relative;
-                overflow: hidden;
-              }
-              .otp-container::before {
-                content: '';
-                position: absolute;
-                top: 0;
-                left: 0;
-                right: 0;
-                bottom: 0;
-                background: linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(6, 182, 212, 0.05) 100%);
-                animation: shimmer 3s ease-in-out infinite;
-              }
-              @keyframes shimmer {
-                0%, 100% { opacity: 0.5; }
-                50% { opacity: 1; }
               }
               .otp-label {
-                color: rgba(255, 255, 255, 0.6);
+                color: #64748b;
                 font-size: 12px;
                 text-transform: uppercase;
                 letter-spacing: 2px;
                 margin-bottom: 16px;
-                position: relative;
-                z-index: 1;
               }
               .otp-code {
                 font-size: 48px;
@@ -184,14 +169,12 @@ export async function POST(request: NextRequest) {
                 -webkit-text-fill-color: transparent;
                 background-clip: text;
                 font-family: 'Courier New', monospace;
-                position: relative;
-                z-index: 1;
               }
               .expiry-notice {
                 display: inline-block;
-                background: rgba(239, 68, 68, 0.1);
-                border: 1px solid rgba(239, 68, 68, 0.3);
-                color: #fca5a5;
+                background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+                border: 1px solid #f59e0b;
+                color: #92400e;
                 padding: 12px 24px;
                 border-radius: 8px;
                 font-size: 14px;
@@ -199,44 +182,98 @@ export async function POST(request: NextRequest) {
                 font-weight: 500;
               }
               .security-notice {
-                color: rgba(255, 255, 255, 0.5);
+                color: #64748b;
                 font-size: 14px;
                 margin-top: 30px;
                 padding: 20px;
-                background: rgba(255, 255, 255, 0.02);
+                background: #f8fafc;
                 border-radius: 12px;
-                border: 1px solid rgba(255, 255, 255, 0.05);
-              }
-              .footer {
-                background: rgba(0, 0, 0, 0.3);
-                padding: 30px;
-                text-align: center;
-                border-top: 1px solid rgba(102, 126, 234, 0.2);
-              }
-              .footer-text {
-                color: rgba(255, 255, 255, 0.4);
-                font-size: 13px;
-                line-height: 1.8;
-              }
-              .footer-link {
-                color: #06b6d4;
-                text-decoration: none;
-                transition: color 0.3s;
-              }
-              .footer-link:hover {
-                color: #667eea;
+                border: 1px solid #e2e8f0;
               }
               .divider {
                 height: 1px;
-                background: linear-gradient(90deg, transparent 0%, rgba(102, 126, 234, 0.3) 50%, transparent 100%);
+                background: linear-gradient(90deg, transparent 0%, #e2e8f0 50%, transparent 100%);
                 margin: 20px 0;
+              }
+              .developer-section {
+                background: #f8fafc;
+                padding: 30px;
+                text-align: center;
+                border-top: 1px solid #e2e8f0;
+              }
+              .developer-label {
+                color: #94a3b8;
+                font-size: 11px;
+                text-transform: uppercase;
+                letter-spacing: 2px;
+                margin-bottom: 12px;
+              }
+              .developer-names {
+                color: #475569;
+                font-size: 14px;
+                font-weight: 600;
+                margin-bottom: 16px;
+              }
+              .developer-names a {
+                color: #667eea;
+                text-decoration: none;
+              }
+              .course-info {
+                color: #94a3b8;
+                font-size: 12px;
+                line-height: 1.6;
+              }
+              .course-info a {
+                color: #667eea;
+                text-decoration: none;
+              }
+              .footer {
+                background: #ffffff;
+                padding: 25px 30px;
+                text-align: center;
+                border-top: 1px solid #e2e8f0;
+              }
+              .footer-text {
+                color: #94a3b8;
+                font-size: 12px;
+                line-height: 1.8;
+              }
+              .footer-link {
+                color: #667eea;
+                text-decoration: none;
+              }
+              .decorative-dots {
+                display: flex;
+                justify-content: center;
+                gap: 8px;
+                margin: 20px 0;
+              }
+              .dot {
+                width: 8px;
+                height: 8px;
+                border-radius: 50%;
+                background: linear-gradient(135deg, #667eea 0%, #06b6d4 100%);
+                opacity: 0.3;
+              }
+              .dot:nth-child(2) {
+                opacity: 0.6;
+              }
+              .dot:nth-child(3) {
+                opacity: 1;
               }
             </style>
           </head>
           <body>
             <div class="email-container">
               <div class="header">
-                <div class="logo">VOID AI</div>
+                <div class="logo-container">
+                  <svg class="logo-icon" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="20" cy="20" r="18" stroke="white" stroke-width="2" fill="none"/>
+                    <path d="M12 20C12 15.5 15.5 12 20 12C24.5 12 28 15.5 28 20" stroke="white" stroke-width="2" stroke-linecap="round"/>
+                    <circle cx="20" cy="20" r="4" fill="white"/>
+                  </svg>
+                  <span class="logo-text">VOID<span class="logo-ai">.AI</span></span>
+                </div>
                 <div class="tagline">We find alpha in the void</div>
               </div>
               
@@ -257,6 +294,22 @@ export async function POST(request: NextRequest) {
                 
                 <div class="security-notice">
                   🔒 If you didn't request this code, please ignore this email. Your account security is important to us.
+                </div>
+              </div>
+              
+              <div class="developer-section">
+                <div class="decorative-dots">
+                  <span class="dot"></span>
+                  <span class="dot"></span>
+                  <span class="dot"></span>
+                </div>
+                <div class="developer-label">Developers</div>
+                <div class="developer-names">
+                  <a href="#">Aatmaj Amol Salunke</a> &nbsp;•&nbsp; <a href="#">Vijwal Mahendrakar</a>
+                </div>
+                <div class="course-info">
+                  Built for <a href="#">CS5130</a> — Applied Programming and Data Processing for AI<br>
+                  Northeastern University, Boston • Spring 2026
                 </div>
               </div>
               

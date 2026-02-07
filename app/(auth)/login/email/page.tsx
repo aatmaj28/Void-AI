@@ -7,6 +7,7 @@ import { ArrowLeft, Eye, EyeOff } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { useUser } from "@/lib/user-context"
 
 function AnimatedBackground() {
     return (
@@ -21,6 +22,7 @@ function AnimatedBackground() {
 
 export default function LoginEmailPage() {
     const router = useRouter()
+    const { setUser } = useUser()
     const [email, setEmail] = useState("")
     const [password, setPassword] = useState("")
     const [showPassword, setShowPassword] = useState(false)
@@ -44,6 +46,13 @@ export default function LoginEmailPage() {
             if (!response.ok) {
                 throw new Error(data.error || "Invalid email or password")
             }
+
+            // Store user data in context
+            setUser({
+                email: data.user.email,
+                firstName: data.user.firstName,
+                lastName: data.user.lastName,
+            })
 
             // Redirect to dashboard
             router.push("/dashboard")
