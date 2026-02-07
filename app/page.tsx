@@ -16,11 +16,24 @@ import {
   Database,
   Sparkles,
   Target,
+  User,
+  Settings,
+  Key,
+  LogOut,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Logo } from "@/components/logo"
 import { Footer } from "@/components/footer"
+import { useUser } from "@/lib/user-context"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { useRouter } from "next/navigation"
 
 const features = [
   {
@@ -101,20 +114,18 @@ function FloatingCards() {
       {cards.map((card, i) => (
         <div
           key={card.ticker}
-          className={`absolute bg-card/80 backdrop-blur-sm border border-border rounded-lg p-3 shadow-lg ${
-            i === 0
-              ? "top-32 right-24 animate-float"
-              : i === 1
-                ? "top-48 right-48 animate-float-delayed"
-                : "top-64 right-16 animate-float-slow"
-          }`}
+          className={`absolute bg-card/80 backdrop-blur-sm border border-border rounded-lg p-3 shadow-lg ${i === 0
+            ? "top-32 right-24 animate-float"
+            : i === 1
+              ? "top-48 right-48 animate-float-delayed"
+              : "top-64 right-16 animate-float-slow"
+            }`}
         >
           <div className="flex items-center gap-3">
             <div className="text-sm font-mono font-semibold">{card.ticker}</div>
             <div
-              className={`text-sm font-mono ${
-                card.type === "positive" ? "text-success" : "text-destructive"
-              }`}
+              className={`text-sm font-mono ${card.type === "positive" ? "text-success" : "text-destructive"
+                }`}
             >
               {card.change}
             </div>
@@ -129,10 +140,17 @@ function FloatingCards() {
 export default function LandingPage() {
   const { theme, setTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
+  const { user, logout, isLoading } = useUser()
+  const router = useRouter()
 
   useEffect(() => {
     setMounted(true)
   }, [])
+
+  const handleLogout = () => {
+    logout()
+    router.push("/")
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -156,12 +174,62 @@ export default function LandingPage() {
                 <div className="h-5 w-5" />
               )}
             </Button>
-            <Button variant="ghost" asChild>
-              <Link href="/login">Sign In</Link>
-            </Button>
-            <Button asChild className="bg-primary hover:bg-primary/90 text-primary-foreground">
-              <Link href="/register">Get Started</Link>
-            </Button>
+
+            {/* Conditionally show Sign In/Get Started or User Avatar */}
+            {!isLoading && user ? (
+              <>
+                <Button asChild variant="ghost">
+                  <Link href="/dashboard">Dashboard</Link>
+                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="relative">
+                      <div className="h-8 w-8 rounded-full bg-gradient-to-br from-primary to-cyan flex items-center justify-center">
+                        <span className="text-xs font-bold text-primary-foreground">
+                          {user.firstName?.[0]}{user.lastName?.[0]}
+                        </span>
+                      </div>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56">
+                    <div className="px-2 py-1.5">
+                      <p className="text-sm font-medium">{user.firstName} {user.lastName}</p>
+                      <p className="text-xs text-muted-foreground">{user.email}</p>
+                    </div>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem asChild>
+                      <Link href="/profile" className="cursor-pointer">
+                        <User className="mr-2 h-4 w-4" />
+                        Profile
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href="/dashboard" className="cursor-pointer">
+                        <Settings className="mr-2 h-4 w-4" />
+                        Dashboard
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      className="cursor-pointer text-destructive focus:text-destructive"
+                      onClick={handleLogout}
+                    >
+                      <LogOut className="mr-2 h-4 w-4" />
+                      Logout
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </>
+            ) : (
+              <>
+                <Button variant="ghost" asChild>
+                  <Link href="/login">Sign In</Link>
+                </Button>
+                <Button asChild className="bg-primary hover:bg-primary/90 text-primary-foreground">
+                  <Link href="/register">Get Started</Link>
+                </Button>
+              </>
+            )}
           </div>
         </div>
       </header>
@@ -196,22 +264,28 @@ export default function LandingPage() {
             </p>
 
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-              <Button
-                size="lg"
-                asChild
-                className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2 px-8"
-              >
-                <Link href="/dashboard">
-                  Get Started
-                  <ArrowRight className="h-4 w-4" />
-                </Link>
-              </Button>
-              <Button size="lg" variant="outline" asChild className="gap-2 px-8 bg-transparent">
-                <Link href="/opportunities">
-                  <TrendingUp className="h-4 w-4" />
-                  View Opportunities
-                </Link>
-              </Button>
+              {/* Show Get Started only when not logged in */}
+              {!user && (
+                <Button
+                  size="lg"
+                  asChild
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2 px-8"
+                >
+                  <Link href="/register">
+                    Get Started
+                    <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </Button>
+              )}
+              {/* Show View Opportunities only when logged in */}
+              {user && (
+                <Button size="lg" asChild className="gap-2 px-8 bg-primary hover:bg-primary/90 text-primary-foreground">
+                  <Link href="/dashboard">
+                    <TrendingUp className="h-4 w-4" />
+                    View Opportunities
+                  </Link>
+                </Button>
+              )}
             </div>
 
             {/* Stats */}
@@ -322,19 +396,21 @@ export default function LandingPage() {
       <section className="py-20 md:py-32 bg-gradient-to-br from-primary/10 via-background to-cyan/10">
         <div className="container mx-auto px-4 text-center">
           <h2 className="text-3xl md:text-4xl font-bold mb-4">
-            Ready to explore the void?
+            {user ? "Your opportunities await" : "Ready to explore the void?"}
           </h2>
           <p className="text-muted-foreground max-w-xl mx-auto mb-8">
-            Start discovering under-covered investment opportunities today. No
-            credit card required.
+            {user
+              ? "Continue exploring under-covered investment opportunities in your dashboard."
+              : "Start discovering under-covered investment opportunities today. No credit card required."
+            }
           </p>
           <Button
             size="lg"
             asChild
             className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2 px-8"
           >
-            <Link href="/register">
-              Get Started Free
+            <Link href={user ? "/dashboard" : "/register"}>
+              {user ? "Go to Dashboard" : "Get Started Free"}
               <ArrowRight className="h-4 w-4" />
             </Link>
           </Button>
