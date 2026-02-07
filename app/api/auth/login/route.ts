@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
-import { userStore } from "@/lib/auth-store"
+import { supabase } from "@/lib/supabase"
+import bcrypt from "bcryptjs"
 
 export async function POST(request: NextRequest) {
     try {
@@ -12,32 +13,37 @@ export async function POST(request: NextRequest) {
             )
         }
 
-        // Get user from store
-        const user = userStore.get(email)
+        // Get user from database
+        const { data: user, error } = await supabase
+            .from("users")
+            .select("*")
+            .eq("email", email)
+            .single()
 
-        if (!user) {
+        if (error || !user) {
             return NextResponse.json(
                 { error: "Invalid email or password" },
                 { status: 401 }
             )
         }
 
-        // Verify password (in production, use bcrypt)
-        if (user.password !== password) {
+        // Verify password
+        const passwordMatch = await bcrypt.compare(password, user.password)
+
+        if (!passwordMatch) {
             return NextResponse.json(
                 { error: "Invalid email or password" },
                 { status: 401 }
             )
         }
 
-        // In production, create session/JWT token here
         return NextResponse.json({
             success: true,
             message: "Login successful",
             user: {
                 email: user.email,
-                firstName: user.firstName,
-                lastName: user.lastName
+                firstName: user.first_name,
+                lastName: user.last_name
             }
         })
     } catch (error) {

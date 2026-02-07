@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { otpStore } from "@/lib/auth-store"
+import { supabase } from "@/lib/supabase"
 
 export async function POST(request: NextRequest) {
     try {
@@ -12,10 +12,14 @@ export async function POST(request: NextRequest) {
             )
         }
 
-        // Get stored OTP
-        const stored = otpStore.get(email)
+        // Get stored OTP from Supabase
+        const { data: stored, error } = await supabase
+            .from("otps")
+            .select("*")
+            .eq("email", email)
+            .single()
 
-        if (!stored) {
+        if (error || !stored) {
             return NextResponse.json(
                 { error: "No OTP found for this email" },
                 { status: 400 }
@@ -23,8 +27,9 @@ export async function POST(request: NextRequest) {
         }
 
         // Check if expired
-        if (Date.now() > stored.expiresAt) {
-            otpStore.delete(email)
+        if (new Date() > new Date(stored.expires_at)) {
+            // Delete expired OTP
+            await supabase.from("otps").delete().eq("email", email)
             return NextResponse.json(
                 { error: "OTP has expired" },
                 { status: 400 }
@@ -40,7 +45,7 @@ export async function POST(request: NextRequest) {
         }
 
         // OTP is valid, remove it
-        otpStore.delete(email)
+        await supabase.from("otps").delete().eq("email", email)
 
         return NextResponse.json({ success: true, message: "OTP verified successfully" })
     } catch (error) {

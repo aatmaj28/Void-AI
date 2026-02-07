@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
-import { userStore } from "@/lib/auth-store"
+import { supabase } from "@/lib/supabase"
+import bcrypt from "bcryptjs"
 
 export async function POST(request: NextRequest) {
     try {
@@ -20,15 +21,41 @@ export async function POST(request: NextRequest) {
         }
 
         // Check if user already exists
-        if (userStore.has(email)) {
+        const { data: existingUser } = await supabase
+            .from("users")
+            .select("id")
+            .eq("email", email)
+            .single()
+
+        if (existingUser) {
             return NextResponse.json(
                 { error: "User already exists" },
                 { status: 400 }
             )
         }
 
-        // Store user (in production, hash password and use database)
-        userStore.set(email, { email, firstName, lastName, password })
+        // Hash password
+        const hashedPassword = await bcrypt.hash(password, 10)
+
+        // Insert user into database
+        const { data, error } = await supabase
+            .from("users")
+            .insert({
+                email,
+                first_name: firstName,
+                last_name: lastName,
+                password: hashedPassword
+            })
+            .select()
+            .single()
+
+        if (error) {
+            console.error("Supabase error:", error)
+            return NextResponse.json(
+                { error: "Failed to create account" },
+                { status: 500 }
+            )
+        }
 
         return NextResponse.json({
             success: true,
