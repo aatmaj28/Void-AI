@@ -21,6 +21,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ],
   pages: {
     signIn: "/login",
+    // Redirect auth errors to /login so we show a message instead of 500 on /api/auth/error
+    error: "/login",
   },
   callbacks: {
     async signIn() {
