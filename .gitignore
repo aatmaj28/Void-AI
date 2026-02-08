@@ -20,6 +20,13 @@ yarn-error.log*
 .env*
 !.env.example
 
+# yfinance local cache (used when running pipeline locally)
+.yfinance_cache/
+
+# pipeline data outputs (keep scripts, not generated CSVs/logs)
+scripts/*.csv
+scripts/failed_tickers.log
+
 # vercel
 .vercel
 
