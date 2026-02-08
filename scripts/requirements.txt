@@ -1,0 +1,7 @@
+yfinance==0.2.48
+supabase==2.10.0
+pandas==2.2.3
+numpy>=1.24.0
+requests==2.32.3
+python-dotenv==1.0.1
+colorama==0.4.6
