@@ -6,6 +6,7 @@ No Supabase, no CSVs. Use this to see if yfinance returns any data from your mac
 import os
 import requests
 import yfinance as yf
+import pandas as pd
 from io import StringIO
 
 # Use project cache so yfinance can write (avoids "unable to open database file")
@@ -23,7 +24,7 @@ LIMIT = 10
 # Get tickers
 r = requests.get(URL, timeout=10)
 r.raise_for_status()
-df = __import__("pandas").read_csv(StringIO(r.text))
+df = pd.read_csv(StringIO(r.text))
 tickers = df["Symbol"].tolist()[:LIMIT]
 
 print("Tickers:", tickers)
@@ -31,11 +32,27 @@ print()
 
 for t in tickers:
     try:
-        stock = yf.Ticker(t)
-        hist = stock.history(period="5d")  # just 5 days
+        # IMPORTANT: do NOT pass a custom requests.Session here.
+        # Let yfinance manage its own curl_cffi session internally, same as in yf_connectivity_test.py.
+        hist = yf.download(t, period="5d", progress=False)
         if hist is not None and not hist.empty:
-            close = hist["Close"].iloc[-1]
-            print(f"  {t}: ${close:.2f}")
+            # yfinance now often returns a MultiIndex for columns: level0 ('Price'), level1 (ticker).
+            # Handle both simple and MultiIndex cases.
+            close_val = None
+            cols = hist.columns
+            if isinstance(cols, pd.MultiIndex):
+                # Try: level 0 = 'Close', level 1 = ticker symbol
+                try:
+                    series = hist["Close"][t]
+                except Exception:
+                    # Fallback: take the first column whose top-level name is 'Close'
+                    close_sub = hist["Close"]
+                    series = close_sub.iloc[:, 0]
+                close_val = float(series.iloc[-1])
+            else:
+                close_val = float(hist["Close"].iloc[-1])
+
+            print(f"  {t}: ${close_val:.2f}")
         else:
             print(f"  {t}: (no data)")
     except Exception as e:

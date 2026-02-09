@@ -20,6 +20,7 @@ import {
   AlertCircle,
   Menu,
   X,
+  MessageSquare,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -34,11 +35,13 @@ import { Badge } from "@/components/ui/badge"
 import { Logo } from "@/components/logo"
 import { cn } from "@/lib/utils"
 import { useUser } from "@/lib/user-context"
+import { fetchOpportunities, type Opportunity } from "@/lib/opportunities"
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/opportunities", label: "Opportunities", icon: TrendingUp },
   { href: "/screener", label: "Screener", icon: Filter },
+  { href: "/explore", label: "Explore & Chat", icon: MessageSquare },
   { href: "/watchlist", label: "Watchlist", icon: Star },
   { href: "/alerts", label: "Alerts", icon: AlertCircle },
 ]
@@ -51,10 +54,49 @@ export function Navbar() {
   const [mounted, setMounted] = React.useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false)
   const [unreadAlerts] = React.useState(3)
+  const [searchQuery, setSearchQuery] = React.useState("")
+  const [allStocks, setAllStocks] = React.useState<Opportunity[]>([])
+  const [searchResults, setSearchResults] = React.useState<Opportunity[]>([])
+  const [showResults, setShowResults] = React.useState(false)
 
   React.useEffect(() => {
     setMounted(true)
   }, [])
+
+  // Load all opportunities once for client-side search
+  React.useEffect(() => {
+    fetchOpportunities()
+      .then(setAllStocks)
+      .catch(() => {
+        // fail silently; search just won't show suggestions
+      })
+  }, [])
+
+  const handleSearchChange = (value: string) => {
+    setSearchQuery(value)
+    if (!value.trim()) {
+      setSearchResults([])
+      setShowResults(false)
+      return
+    }
+    const q = value.toLowerCase()
+    const matches = allStocks
+      .filter(
+        (s) =>
+          s.ticker.toLowerCase().includes(q) ||
+          s.company.toLowerCase().includes(q) ||
+          s.sector.toLowerCase().includes(q)
+      )
+      .slice(0, 8)
+    setSearchResults(matches)
+    setShowResults(matches.length > 0)
+  }
+
+  const navigateToTicker = (ticker: string) => {
+    setSearchQuery("")
+    setShowResults(false)
+    router.push(`/stock/${ticker}`)
+  }
 
   const handleLogout = () => {
     logout()
@@ -93,15 +135,58 @@ export function Navbar() {
         <div className="flex items-center gap-2">
           {/* Search - Desktop */}
           <div className="hidden lg:flex relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground z-10" />
             <Input
               type="search"
               placeholder="Search stocks..."
+              value={searchQuery}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              onFocus={() => {
+                if (searchResults.length > 0) setShowResults(true)
+              }}
+              onBlur={() => {
+                // delay to allow click on suggestions
+                setTimeout(() => setShowResults(false), 150)
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && searchResults.length > 0) {
+                  navigateToTicker(searchResults[0].ticker)
+                }
+              }}
               className="w-64 pl-9 pr-12 bg-secondary border-none"
             />
             <kbd className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none hidden sm:inline-flex h-5 select-none items-center gap-1 rounded border border-border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
               <span className="text-xs">⌘</span>K
             </kbd>
+            {showResults && searchResults.length > 0 && (
+              <div className="absolute left-0 right-0 top-11 z-20 rounded-md border border-border bg-popover shadow-md">
+                <ul className="max-h-72 overflow-y-auto text-sm">
+                  {searchResults.map((stock) => (
+                    <li key={stock.ticker}>
+                      <button
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => navigateToTicker(stock.ticker)}
+                        className="w-full px-3 py-2 flex items-center justify-between gap-2 hover:bg-secondary text-left"
+                      >
+                        <div>
+                          <div className="font-mono font-semibold">{stock.ticker}</div>
+                          <div className="text-xs text-muted-foreground truncate max-w-[220px]">
+                            {stock.company}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-xs text-muted-foreground">{stock.sector}</div>
+                          <div className="text-[11px] text-muted-foreground">
+                            Gap {stock.gapScore} · Act {stock.activityScore}
+                          </div>
+                        </div>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
 
           {/* Theme Toggle */}

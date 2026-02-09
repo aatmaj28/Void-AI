@@ -6,7 +6,8 @@
     "build": "next build",
     "dev": "next dev",
     "lint": "eslint .",
-    "start": "next start"
+    "start": "next start",
+    "db:show-migration": "node scripts/show-migration.js"
   },
   "dependencies": {
     "@auth/core": "^0.34.3",

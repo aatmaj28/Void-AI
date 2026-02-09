@@ -1,8 +1,6 @@
 "use client"
 
-import React from "react"
-
-import { useState, use } from "react"
+import React, { useState, use, useEffect } from "react"
 import Link from "next/link"
 import {
   ArrowLeft,
@@ -29,13 +27,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Input } from "@/components/ui/input"
-import {
-  mockStocks,
-  mockHypothesis,
-  formatMarketCap,
-  formatVolume,
-  formatPercent,
-} from "@/lib/mock-data"
+import { mockHypothesis, formatMarketCap, formatVolume, formatPercent } from "@/lib/mock-data"
 import {
   LineChart,
   Line,
@@ -150,8 +142,40 @@ function CollapsibleCard({
   )
 }
 
+type StockDetail = {
+  ticker: string
+  company: string
+  sector: string
+  industry: string
+  marketCap: number
+  price: number
+  change: number
+  changePercent: number
+  analystCount: number
+  gapScore: number
+  activityScore: number
+  opportunityType: string
+  high52w: number
+  low52w: number
+  volume: number
+  avgVolume: number
+  pe: number | null
+  priceHistory: number[]
+}
+
+type NewsItem = {
+  id: number
+  source: string
+  headline: string
+  url: string
+  datetime: number
+  summary: string
+  image: string | null
+}
+
 export default function StockDetailPage({ params }: { params: Promise<{ ticker: string }> }) {
-  const { ticker } = use(params)
+  const { ticker: tickerParam } = use(params)
+  const ticker = tickerParam?.toUpperCase() ?? ""
   const [activeTab, setActiveTab] = useState("overview")
   const [chatMessages, setChatMessages] = useState<Array<{ role: "user" | "assistant"; content: string }>>([
     {
@@ -160,8 +184,95 @@ export default function StockDetailPage({ params }: { params: Promise<{ ticker: 
     },
   ])
   const [chatInput, setChatInput] = useState("")
+  const [stock, setStock] = useState<StockDetail | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [news, setNews] = useState<NewsItem[]>([])
+  const [newsLoading, setNewsLoading] = useState(true)
+  const [newsError, setNewsError] = useState<string | null>(null)
 
-  const stock = mockStocks.find((s) => s.ticker.toUpperCase() === ticker.toUpperCase())
+  useEffect(() => {
+    if (!ticker) return
+    fetch(`/api/stock/${ticker}`)
+      .then((res) => {
+        if (!res.ok) {
+          if (res.status === 404) return null
+          throw new Error(res.statusText)
+        }
+        return res.json()
+      })
+      .then((data) => {
+        if (!data) {
+          setStock(null)
+          return
+        }
+        setStock({
+          ticker: data.ticker,
+          company: data.name ?? data.ticker,
+          sector: data.sector ?? "Unknown",
+          industry: data.industry ?? "",
+          marketCap: data.market_cap ?? 0,
+          price: data.current_price ?? 0,
+          change: data.change ?? 0,
+          changePercent: data.changePercent ?? 0,
+          analystCount: data.analyst_count ?? 0,
+          gapScore: Math.round(data.gap_score ?? 0),
+          activityScore: Math.round(data.activity_score ?? 0),
+          opportunityType: data.opportunity_type ?? "Low Priority",
+          high52w: data.year_high ?? 0,
+          low52w: data.year_low ?? 0,
+          volume: data.volume ?? 0,
+          avgVolume: data.avg_volume_20d ?? data.avgVolume ?? 0,
+          pe: typeof data.pe_ratio === "number" ? data.pe_ratio : data.pe ?? null,
+          priceHistory: [],
+        })
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"))
+      .finally(() => setLoading(false))
+  }, [ticker])
+
+  // Load latest news from Finnhub-backed API
+  useEffect(() => {
+    if (!ticker) return
+    setNewsLoading(true)
+    setNewsError(null)
+    fetch(`/api/stock/${ticker}/news`)
+      .then((res) => {
+        if (!res.ok) {
+          throw new Error(res.statusText)
+        }
+        return res.json()
+      })
+      .then((data: NewsItem[]) => {
+        setNews(Array.isArray(data) ? data : [])
+      })
+      .catch(() => {
+        setNewsError("Failed to load news")
+      })
+      .finally(() => setNewsLoading(false))
+  }, [ticker])
+
+  if (loading) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <h1 className="text-2xl font-bold">Loading {ticker}…</h1>
+        <div className="flex items-center justify-center py-24 text-muted-foreground">Loading…</div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-destructive">
+          {error}
+        </div>
+        <Button asChild className="mt-4">
+          <Link href="/opportunities">Back to Opportunities</Link>
+        </Button>
+      </div>
+    )
+  }
 
   if (!stock) {
     return (
@@ -179,9 +290,9 @@ export default function StockDetailPage({ params }: { params: Promise<{ ticker: 
     )
   }
 
-  const priceChartData = stock.priceHistory.map((price, index) => ({
+  const priceChartData = (stock.priceHistory.length ? stock.priceHistory : [stock.price]).map((p, index) => ({
     day: index + 1,
-    price,
+    price: typeof p === "number" ? p : stock.price,
   }))
 
   const coverageData = [
@@ -293,6 +404,10 @@ export default function StockDetailPage({ params }: { params: Promise<{ ticker: 
           <TabsTrigger value="analysis" className="gap-2">
             <TrendingUp className="h-4 w-4" />
             AI Analysis
+          </TabsTrigger>
+          <TabsTrigger value="news" className="gap-2">
+            <FileText className="h-4 w-4" />
+            News
           </TabsTrigger>
           <TabsTrigger value="documents" className="gap-2">
             <FileText className="h-4 w-4" />
@@ -728,6 +843,80 @@ export default function StockDetailPage({ params }: { params: Promise<{ ticker: 
               Regenerate Analysis
             </Button>
           </div>
+        </TabsContent>
+
+        {/* News Tab */}
+        <TabsContent value="news" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Latest News</CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Top 5 recent articles for {stock.ticker} powered by Finnhub.
+              </p>
+            </CardHeader>
+            <CardContent>
+              {newsLoading && (
+                <div className="text-sm text-muted-foreground py-8 text-center">
+                  Loading news…
+                </div>
+              )}
+              {!newsLoading && newsError && (
+                <div className="text-sm text-destructive py-4 text-center">{newsError}</div>
+              )}
+              {!newsLoading && !newsError && news.length === 0 && (
+                <div className="text-sm text-muted-foreground py-8 text-center">
+                  No recent news found for this ticker.
+                </div>
+              )}
+              <div className="space-y-4">
+                {news.map((item) => {
+                  const date = new Date(item.datetime * 1000)
+                  return (
+                    <div
+                      key={item.id}
+                      className="flex items-start justify-between gap-4 p-3 rounded-lg border border-border/60 hover:bg-secondary/50 transition-colors"
+                    >
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-xs uppercase tracking-wide text-primary font-semibold">
+                            {item.source}
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            {date.toLocaleDateString(undefined, {
+                              month: "short",
+                              day: "numeric",
+                              year: "numeric",
+                            })}
+                          </span>
+                        </div>
+                        <a
+                          href={item.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-medium text-sm hover:text-primary line-clamp-2"
+                        >
+                          {item.headline}
+                        </a>
+                        {item.summary && (
+                          <p className="text-xs text-muted-foreground mt-1 line-clamp-3">
+                            {item.summary}
+                          </p>
+                        )}
+                      </div>
+                      <a
+                        href={item.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex-shrink-0 text-muted-foreground hover:text-primary"
+                      >
+                        <ExternalLink className="h-4 w-4" />
+                      </a>
+                    </div>
+                  )
+                })}
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* Documents Tab */}

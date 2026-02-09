@@ -73,8 +73,11 @@ def fetch_tickers():
 def fetch_one_ticker(ticker: str):
     """Fetch history(1y) and info for one ticker. Returns (market_rows, metrics_row, analyst_row) or (None, None, None)."""
     try:
+        # IMPORTANT: let yfinance manage its own curl_cffi session.
+        # Use yf.download for price history (works even when a raw requests call shows 429),
+        # and yf.Ticker only for the .info payload.
         stock = yf.Ticker(ticker)
-        hist = stock.history(period="1y")
+        hist = yf.download(ticker, period="1y", progress=False)
         info = stock.info if hasattr(stock, "info") else {}
 
         market_rows = []

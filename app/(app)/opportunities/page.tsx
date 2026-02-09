@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import Link from "next/link"
 import {
   Search,
@@ -26,20 +26,16 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Slider } from "@/components/ui/slider"
-import {
-  mockStocks,
-  formatMarketCap,
-  formatPercent,
-  type Stock,
-} from "@/lib/mock-data"
+import { formatMarketCap, formatPercent } from "@/lib/mock-data"
+import { fetchOpportunities, type Opportunity } from "@/lib/opportunities"
 import {
   LineChart,
   Line,
   ResponsiveContainer,
 } from "recharts"
 
-const sectors = ["All", "Technology", "Healthcare", "Finance", "Industrial", "Consumer", "Energy", "Communications"]
-const opportunityTypes = ["All", "High Activity Low Coverage", "Emerging Coverage Gap", "Institutional Blind Spot", "Sector Mispricing"]
+const sectors = ["All", "Technology", "Healthcare", "Finance", "Industrial", "Consumer", "Energy", "Communications", "Information Technology", "Real Estate", "Consumer Discretionary", "Consumer Staples", "Materials", "Utilities", "Communication Services"]
+const opportunityTypes = ["All", "High Priority", "Strong Opportunity", "Moderate Opportunity", "Low Priority"]
 
 type SortKey = "ticker" | "gapScore" | "activityScore" | "marketCap" | "analystCount" | "changePercent"
 type SortDirection = "asc" | "desc"
@@ -67,10 +63,10 @@ function MiniSparkline({ data }: { data: number[] }) {
 
 function OpportunityTypeBadge({ type }: { type: string }) {
   const colors: Record<string, string> = {
-    "High Activity Low Coverage": "bg-primary/10 text-primary border-primary/20",
-    "Emerging Coverage Gap": "bg-cyan/10 text-cyan border-cyan/20",
-    "Institutional Blind Spot": "bg-warning/10 text-warning border-warning/20",
-    "Sector Mispricing": "bg-success/10 text-success border-success/20",
+    "High Priority": "bg-primary/10 text-primary border-primary/20",
+    "Strong Opportunity": "bg-cyan/10 text-cyan border-cyan/20",
+    "Moderate Opportunity": "bg-warning/10 text-warning border-warning/20",
+    "Low Priority": "bg-muted/50 text-muted-foreground border-muted",
   }
 
   return (
@@ -126,9 +122,19 @@ export default function OpportunitiesPage() {
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc")
   const [selectedStocks, setSelectedStocks] = useState<Set<string>>(new Set())
   const [showFilters, setShowFilters] = useState(true)
+  const [stocks, setStocks] = useState<Opportunity[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetchOpportunities()
+      .then(setStocks)
+      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"))
+      .finally(() => setLoading(false))
+  }, [])
 
   const filteredStocks = useMemo(() => {
-    return mockStocks
+    return stocks
       .filter((stock) => {
         const matchesSearch =
           search === "" ||
@@ -152,7 +158,7 @@ export default function OpportunitiesPage() {
           ? (aVal as number) - (bVal as number)
           : (bVal as number) - (aVal as number)
       })
-  }, [search, selectedSector, selectedType, minGapScore, sortKey, sortDirection])
+  }, [stocks, search, selectedSector, selectedType, minGapScore, sortKey, sortDirection])
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -190,6 +196,28 @@ export default function OpportunitiesPage() {
 
   const hasActiveFilters =
     search !== "" || selectedSector !== "All" || selectedType !== "All" || minGapScore > 0
+
+  if (loading) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <h1 className="text-3xl font-bold">Opportunities</h1>
+        <p className="text-muted-foreground mt-1">Loading…</p>
+        <div className="flex items-center justify-center py-24 text-muted-foreground">Loading…</div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <h1 className="text-3xl font-bold">Opportunities</h1>
+        <p className="text-muted-foreground mt-1">Error loading data</p>
+        <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-destructive">
+          {error}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -433,7 +461,9 @@ export default function OpportunitiesPage() {
                       </td>
                       <td className="py-4 px-4 text-right hidden lg:table-cell">
                         <div className="flex items-center justify-end gap-2">
-                          <MiniSparkline data={stock.priceHistory} />
+                          {stock.priceHistory.length > 0 && (
+                            <MiniSparkline data={stock.priceHistory} />
+                          )}
                           <div>
                             <div className="font-mono text-sm">${stock.price.toFixed(2)}</div>
                             <div

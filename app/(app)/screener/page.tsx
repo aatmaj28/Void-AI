@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import Link from "next/link"
 import {
   Plus,
@@ -29,7 +29,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { mockStocks, formatMarketCap, formatPercent } from "@/lib/mock-data"
+import { formatMarketCap, formatPercent } from "@/lib/mock-data"
+import { fetchOpportunities, type Opportunity } from "@/lib/opportunities"
 import { LineChart, Line, ResponsiveContainer } from "recharts"
 
 interface Condition {
@@ -112,6 +113,16 @@ export default function ScreenerPage() {
   const [activeScreen, setActiveScreen] = useState<string | null>(null)
   const [newScreenName, setNewScreenName] = useState("")
   const [showSaveDialog, setShowSaveDialog] = useState(false)
+  const [stocks, setStocks] = useState<Opportunity[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetchOpportunities()
+      .then(setStocks)
+      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"))
+      .finally(() => setLoading(false))
+  }, [])
 
   const addCondition = () => {
     const newCondition: Condition = {
@@ -167,7 +178,7 @@ export default function ScreenerPage() {
   }
 
   const filteredStocks = useMemo(() => {
-    return mockStocks.filter((stock) => {
+    return stocks.filter((stock) => {
       return conditions.every((condition) => {
         let stockValue: number
 
@@ -213,7 +224,29 @@ export default function ScreenerPage() {
         }
       })
     })
-  }, [conditions])
+  }, [stocks, conditions])
+
+  if (loading) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <h1 className="text-3xl font-bold">Screener</h1>
+        <p className="text-muted-foreground mt-1">Loading…</p>
+        <div className="flex items-center justify-center py-24 text-muted-foreground">Loading…</div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <h1 className="text-3xl font-bold">Screener</h1>
+        <p className="text-muted-foreground mt-1">Error loading data</p>
+        <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-destructive">
+          {error}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -475,7 +508,9 @@ export default function ScreenerPage() {
                           </td>
                           <td className="py-3 px-4 text-right hidden lg:table-cell">
                             <div className="flex items-center justify-end gap-2">
-                              <MiniSparkline data={stock.priceHistory} />
+                              {stock.priceHistory.length > 0 && (
+                                <MiniSparkline data={stock.priceHistory} />
+                              )}
                               <div>
                                 <div className="font-mono text-sm">${stock.price.toFixed(2)}</div>
                                 <div
