@@ -27,6 +27,13 @@ yarn-error.log*
 scripts/*.csv
 scripts/failed_tickers.log
 
+# SEC filing downloads (local samples only)
+scripts/sec_samples/
+
+# Editor and temp files
+.vscode/
+_tmp_*
+
 # vercel
 .vercel
 

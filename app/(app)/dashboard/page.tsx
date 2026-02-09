@@ -1,8 +1,6 @@
 "use client"
 
-import React from "react"
-
-import { useState } from "react"
+import React, { useState, useEffect } from "react"
 import Link from "next/link"
 import {
   TrendingUp,
@@ -18,13 +16,8 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import {
-  mockStocks,
-  mockAlerts,
-  formatMarketCap,
-  formatPercent,
-  getRelativeTime,
-} from "@/lib/mock-data"
+import { mockAlerts, formatMarketCap, formatPercent, getRelativeTime } from "@/lib/mock-data"
+import { fetchOpportunities, type Opportunity } from "@/lib/opportunities"
 import {
   LineChart,
   Line,
@@ -36,38 +29,7 @@ import {
   Area,
 } from "recharts"
 
-// Summary stats
-const summaryStats = [
-  {
-    title: "Total Stocks Tracked",
-    value: "523",
-    icon: BarChart3,
-    change: "+12",
-    trend: "up",
-  },
-  {
-    title: "Under-Covered Opportunities",
-    value: "47",
-    icon: Eye,
-    change: "+5",
-    trend: "up",
-    highlight: true,
-  },
-  {
-    title: "New This Week",
-    value: "8",
-    icon: TrendingUp,
-    change: "+3",
-    trend: "up",
-  },
-  {
-    title: "Average Gap Score",
-    value: "78.4",
-    icon: Activity,
-    change: "+2.1",
-    trend: "up",
-  },
-]
+// Summary stats are computed from real data in the component
 
 // Generate trend data
 const trendData = Array.from({ length: 30 }, (_, i) => ({
@@ -155,6 +117,10 @@ function MiniSparkline({ data }: { data: number[] }) {
 
 function OpportunityTypeBadge({ type }: { type: string }) {
   const colors: Record<string, string> = {
+    "High Priority": "bg-primary/10 text-primary border-primary/20",
+    "Strong Opportunity": "bg-cyan/10 text-cyan border-cyan/20",
+    "Moderate Opportunity": "bg-warning/10 text-warning border-warning/20",
+    "Low Priority": "bg-muted/50 text-muted-foreground border-muted",
     "High Activity Low Coverage": "bg-primary/10 text-primary border-primary/20",
     "Emerging Coverage Gap": "bg-cyan/10 text-cyan border-cyan/20",
     "Institutional Blind Spot": "bg-warning/10 text-warning border-warning/20",
@@ -184,12 +150,84 @@ function AlertTypeBadge({ type }: { type: string }) {
 
 export default function DashboardPage() {
   const [timeRange, setTimeRange] = useState<"7D" | "30D" | "90D" | "1Y">("30D")
+  const [opportunities, setOpportunities] = useState<Opportunity[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-  const topOpportunities = mockStocks
+  useEffect(() => {
+    fetchOpportunities()
+      .then(setOpportunities)
+      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"))
+      .finally(() => setLoading(false))
+  }, [])
+
+  const topOpportunities = opportunities
     .sort((a, b) => b.gapScore - a.gapScore)
     .slice(0, 8)
 
   const recentAlerts = mockAlerts.slice(0, 5)
+
+  const summaryStats = [
+    {
+      title: "Total Stocks Tracked",
+      value: String(opportunities.length),
+      icon: BarChart3,
+      change: "",
+      trend: "up" as const,
+    },
+    {
+      title: "Under-Covered Opportunities",
+      value: String(opportunities.filter((o) => o.gapScore >= 60).length),
+      icon: Eye,
+      change: "",
+      trend: "up" as const,
+      highlight: true,
+    },
+    {
+      title: "High Priority",
+      value: String(opportunities.filter((o) => o.opportunityType === "High Priority").length),
+      icon: TrendingUp,
+      change: "",
+      trend: "up" as const,
+    },
+    {
+      title: "Average Gap Score",
+      value: opportunities.length
+        ? (opportunities.reduce((s, o) => s + o.gapScore, 0) / opportunities.length).toFixed(1)
+        : "—",
+      icon: Activity,
+      change: "",
+      trend: "up" as const,
+    },
+  ]
+
+  if (loading) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold">Dashboard</h1>
+          <p className="text-muted-foreground mt-1">Loading opportunities…</p>
+        </div>
+        <div className="flex items-center justify-center py-24 text-muted-foreground">
+          Loading…
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold">Dashboard</h1>
+          <p className="text-muted-foreground mt-1">Error loading data</p>
+        </div>
+        <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-destructive">
+          {error}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -342,7 +380,9 @@ export default function DashboardPage() {
                         </td>
                         <td className="py-3 px-2 text-right hidden lg:table-cell">
                           <div className="flex items-center justify-end gap-2">
-                            <MiniSparkline data={stock.priceHistory} />
+                            {stock.priceHistory.length > 0 && (
+                              <MiniSparkline data={stock.priceHistory} />
+                            )}
                             <div>
                               <div className="font-mono text-sm">${stock.price.toFixed(2)}</div>
                               <div

@@ -64,11 +64,14 @@ def fetch_tickers(limit: int):
 def fetch_one_ticker(ticker: str, debug: bool = False):
     """Same logic as pipeline_daily: history(1y) + info. Returns (market_rows, metrics_row, analyst_row)."""
     try:
+        # IMPORTANT: let yfinance manage its own curl_cffi session.
+        # Use yf.download for price history (works even when a raw requests call shows 429),
+        # and yf.Ticker only for the .info payload.
         stock = yf.Ticker(ticker)
         if debug:
             print(f"\n--- DEBUG: {ticker} ---")
             print(f"  stock type: {type(stock)}")
-        hist = stock.history(period="1y")
+        hist = yf.download(ticker, period="1y", progress=False)
         if debug:
             print(f"  hist type: {type(hist)}")
             print(f"  hist is None: {hist is None}")
