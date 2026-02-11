@@ -33,6 +33,7 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-          DELAY_SECONDS: "0.35"
+          DELAY_SECONDS: "0.5"
+          FAIL_IF_FETCH_PCT: "50"
         run: python scripts/pipeline_daily.py
         working-directory: ${{ github.workspace }}

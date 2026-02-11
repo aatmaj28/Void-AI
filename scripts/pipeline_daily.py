@@ -20,6 +20,7 @@ Env (from .env.local or environment):
 Optional:
   DELAY_SECONDS=0.35   (between tickers; increase if rate limited)
   PROGRESS_EVERY=50
+  FAIL_IF_FETCH_PCT=50   (exit 1 if this many % of tickers fail; 0 = never fail job)
 """
 
 import os
@@ -52,6 +53,7 @@ SUPABASE_KEY = os.getenv("SUPABASE_ANON_KEY")
 SP500_URL = "https://raw.githubusercontent.com/datasets/s-and-p-500-companies/main/data/constituents.csv"
 DELAY = float(os.getenv("DELAY_SECONDS", "0.35"))
 PROGRESS_EVERY = int(os.getenv("PROGRESS_EVERY", "50"))
+FAIL_IF_FETCH_PCT = int(os.getenv("FAIL_IF_FETCH_PCT", "50"))  # exit 1 if >= this % of tickers fail (0 = never)
 MARKET_BATCH = 500
 METRICS_BATCH = 100
 ANALYST_BATCH = 100
@@ -80,21 +82,40 @@ def fetch_one_ticker(ticker: str):
         hist = yf.download(ticker, period="1y", progress=False)
         info = stock.info if hasattr(stock, "info") else {}
 
+        # Normalize to single-level columns (same as minimal_fetch_test.py).
+        # yfinance often returns MultiIndex columns; pipeline assumes simple columns.
+        if hist is not None and not hist.empty and isinstance(hist.columns, pd.MultiIndex):
+            top_levels = hist.columns.get_level_values(0).unique()
+            flat = {}
+            for lev in top_levels:
+                part = hist[lev]
+                if isinstance(part, pd.DataFrame):
+                    flat[lev] = part.iloc[:, 0]
+                else:
+                    flat[lev] = part
+            hist = pd.DataFrame(flat, index=hist.index)
+
         market_rows = []
         metrics_row = None
         analyst_row = None
 
+        def _s(val):
+            """Extract scalar from possibly single-element Series (avoids pandas FutureWarning)."""
+            if hasattr(val, "iloc"):
+                return val.iloc[0]
+            return val
+
         if hist is not None and not hist.empty and len(hist) >= 5:
             for date_ts, row in hist.iterrows():
-                vol = row.get("Volume")
+                vol = _s(row.get("Volume"))
                 vol = 0 if (vol is None or (isinstance(vol, float) and np.isnan(vol))) else int(vol)
                 market_rows.append({
                     "ticker": ticker,
                     "date": date_ts.strftime("%Y-%m-%d"),
-                    "open": round(float(row["Open"]), 4),
-                    "high": round(float(row["High"]), 4),
-                    "low": round(float(row["Low"]), 4),
-                    "close": round(float(row["Close"]), 4),
+                    "open": round(float(_s(row["Open"])), 4),
+                    "high": round(float(_s(row["High"])), 4),
+                    "low": round(float(_s(row["Low"])), 4),
+                    "close": round(float(_s(row["Close"])), 4),
                     "volume": vol,
                 })
             hist = hist.copy()
@@ -200,16 +221,25 @@ def main():
         time.sleep(DELAY)
 
     elapsed = time.time() - start
-    print(f"\nFetch done in {elapsed:.0f}s. Failed: {failed}. Upserting to Supabase...\n")
+    total = len(tickers)
+    fail_pct = (100 * failed / total) if total else 0
+    print(f"\nFetch done in {elapsed:.0f}s. Failed: {failed}/{total} ({fail_pct:.0f}%). Upserting to Supabase...\n")
+
+    # If too many tickers failed (e.g. Yahoo 429 on GitHub Actions), fail the job so the workflow shows red.
+    if FAIL_IF_FETCH_PCT > 0 and fail_pct >= FAIL_IF_FETCH_PCT:
+        print(f"Error: {fail_pct:.0f}% of tickers failed (threshold {FAIL_IF_FETCH_PCT}%). Likely Yahoo rate-limiting this IP (e.g. on GitHub Actions).")
+        print("See docs/YFINANCE_USAGE.md — session fix is applied; 429 is IP blocking, not a code bug.")
+        sys.exit(1)
 
     upsert_market_data(all_market)
     upsert_stock_metrics(all_metrics)
     upsert_analyst_coverage(all_analyst)
 
     print("\nRunning scoring engine...\n")
-    run_scoring_engine()
+    scoring_ok = run_scoring_engine()
 
     print("\nDaily pipeline finished.\n")
+    sys.exit(0 if scoring_ok == 0 else 1)
 
 
 if __name__ == "__main__":

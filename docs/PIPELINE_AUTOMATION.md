@@ -52,7 +52,7 @@ In your GitHub repo:
 
 ## Option B: Run the script locally on a schedule
 
-On a machine that’s on at 6 AM (e.g. your PC or a home server):
+On a machine that's on at 6 AM (e.g. your PC or a home server):
 
 **Windows (Task Scheduler):**
 
@@ -81,7 +81,7 @@ If you want a dedicated server that runs the pipeline on a schedule:
 
 1. **Railway / Render / Fly.io**: Create a project that runs a cron job or a small app with a scheduler.
 2. **Cron job** (if the platform supports it): run `python scripts/pipeline_daily.py` at 6 AM.
-3. **Env vars**: Set `SUPABASE_URL` and `SUPABASE_ANON_KEY` in the project’s environment.
+3. **Env vars**: Set `SUPABASE_URL` and `SUPABASE_ANON_KEY` in the project's environment.
 
 Example **Railway** cron (if using a cron service): same as Option B, but the command runs inside the cloud environment.
 
