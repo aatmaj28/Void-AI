@@ -14,7 +14,7 @@ You can: **Colab export → CSV → import** (recommended), **one-step populate*
 
 ## Option B: One-Step Populate (GitHub + yfinance → DB, local)
 
-Fetches the S&P 500 list from GitHub, gets live data from yfinance for each ticker, and upserts into the `companies` table. Matches the “Step 2” plan: CIK from CSV, name/sector/industry/market_cap/exchange/country from yfinance.
+Fetches the S&P 500 list from GitHub, gets live data from yfinance for each ticker, and upserts into the `companies` table. Matches the "Step 2" plan: CIK from CSV, name/sector/industry/market_cap/exchange/country from yfinance.
 
 ### Run from project root
 
