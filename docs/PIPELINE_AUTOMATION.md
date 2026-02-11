@@ -17,9 +17,9 @@ Run fresh data fetch + scoring **every morning** so users see updated info witho
 
 ---
 
-## Option A: GitHub Actions (recommended, free)
+## Option A: GitHub Actions (free, but often 429)
 
-The workflow runs on a schedule and can be triggered manually.
+The workflow runs on a schedule and can be triggered manually. **Note:** Yahoo Finance often returns **429 Too Many Requests** when the pipeline runs on GitHub’s IP. If that happens, use **Option D (Railway or Render)** instead — same script, different IP, no 429.
 
 ### 1. Add secrets
 
@@ -46,22 +46,15 @@ In your GitHub repo:
 ### 4. Notes
 
 - **companies** table is not updated by this pipeline (S&P 500 list is relatively static). Populate it once (e.g. Colab export + import) or add a step to refresh from the same GitHub CSV if you want.
-- If Yahoo rate-limits from GitHub IP, increase `DELAY_SECONDS` in the workflow env (e.g. `0.5` or `0.6`).
+- If Yahoo returns **429** from GitHub’s IP, the job will fail (we exit with code 1 when too many tickers fail). Use **Option D: Railway or Render** for a reliable daily run — see [PIPELINE_RAILWAY_CRON.md](PIPELINE_RAILWAY_CRON.md).
 
 ---
 
-## Option B: Run the script locally on a schedule
+## Option B: Run the script locally on a schedule (reliable when cloud gets 429)
 
-On a machine that's on at 6 AM (e.g. your PC or a home server):
+If Yahoo returns **429** on both GitHub Actions and Render (or Railway), the only reliable way to run the pipeline with free Yahoo data is **on your own machine**. On a machine that's on at your chosen time (e.g. your PC at 6 AM):
 
-**Windows (Task Scheduler):**
-
-1. Create a batch file, e.g. `run_pipeline.bat`:
-   ```bat
-   cd /d "D:\path\to\void ai"
-   python scripts/pipeline_daily.py
-   ```
-2. Task Scheduler → Create Task → Trigger: Daily at 6:00 AM → Action: run `run_pipeline.bat`.
+**Windows (Task Scheduler):** Use the batch file **`run_pipeline.bat`** in the repo root, then schedule it in Task Scheduler. **Full steps:** [PIPELINE_TASK_SCHEDULER_WINDOWS.md](PIPELINE_TASK_SCHEDULER_WINDOWS.md)
 
 **macOS / Linux (cron):**
 
@@ -75,15 +68,14 @@ Ensure `.env.local` (or env vars) has `SUPABASE_URL` and `SUPABASE_ANON_KEY`.
 
 ---
 
-## Option C: Cloud worker (Railway, Render, etc.)
+## Option C: Railway or Render (cron worker — try if GitHub gets 429)
 
-If you want a dedicated server that runs the pipeline on a schedule:
+Use a **cron job** on Railway or Render so the pipeline runs from their IP instead of GitHub’s. **Yahoo often returns 429 on these IPs too**; if you get 429 on both GitHub and Render, use **Option B (local schedule)** instead.
 
-1. **Railway / Render / Fly.io**: Create a project that runs a cron job or a small app with a scheduler.
-2. **Cron job** (if the platform supports it): run `python scripts/pipeline_daily.py` at 6 AM.
-3. **Env vars**: Set `SUPABASE_URL` and `SUPABASE_ANON_KEY` in the project's environment.
+- **Railway:** Connect repo → use `Dockerfile.pipeline` → add env vars → set cron (e.g. `0 9 * * *`).
+- **Render:** New Cron Job → connect repo → Python + `pip install -r scripts/requirements.txt`, command `python scripts/pipeline_daily.py` → add env vars → set schedule.
 
-Example **Railway** cron (if using a cron service): same as Option B, but the command runs inside the cloud environment.
+**Step-by-step:** [PIPELINE_RAILWAY_CRON.md](PIPELINE_RAILWAY_CRON.md)
 
 ---
 
@@ -107,10 +99,10 @@ python scripts/pipeline_daily.py
 
 ## Summary
 
-| Method              | Pros                    | Cons                          |
-|---------------------|-------------------------|-------------------------------|
-| **GitHub Actions**  | Free, no server to run  | Subject to Yahoo rate limits  |
-| **Local cron**      | Full control, your IP   | PC must be on at 6 AM         |
-| **Cloud worker**    | Reliable, separate IP   | Small monthly cost            |
+| Method                | Pros                     | Cons                           |
+|-----------------------|--------------------------|--------------------------------|
+| **GitHub Actions**    | Free, no server          | Yahoo often 429s GitHub’s IP   |
+| **Local cron**        | Full control, your IP    | PC must be on at run time      |
+| **Railway / Render**  | Reliable, dedicated IP   | Free tier or small monthly cost |
 
-For most cases, **GitHub Actions** is enough: add the two Supabase secrets and push the workflow; the pipeline runs every morning and users see updated data.
+If GitHub Actions hits **429**, try **Railway or Render** (Option C); if they get 429 too, use **local schedule** (Option B). See [PIPELINE_RAILWAY_CRON.md](PIPELINE_RAILWAY_CRON.md) for cloud setup.

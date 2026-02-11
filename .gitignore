@@ -26,6 +26,7 @@ yarn-error.log*
 # pipeline data outputs (keep scripts, not generated CSVs/logs)
 scripts/*.csv
 scripts/failed_tickers.log
+pipeline_log.txt
 
 # SEC filing downloads (local samples only)
 scripts/sec_samples/

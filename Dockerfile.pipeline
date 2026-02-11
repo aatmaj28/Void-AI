@@ -1,0 +1,13 @@
+# Daily pipeline cron: yfinance + Supabase + scoring.
+# Use with Railway or Render cron. Same code as local/ GitHub Actions.
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# .dockerignore keeps context small (no node_modules, app/, etc.)
+COPY . .
+RUN pip install --no-cache-dir -r scripts/requirements.txt
+
+# Pipeline reads SUPABASE_URL, SUPABASE_ANON_KEY from env (no .env in container).
+# Optional: DELAY_SECONDS, FAIL_IF_FETCH_PCT, PROGRESS_EVERY
+CMD ["python", "scripts/pipeline_daily.py"]
