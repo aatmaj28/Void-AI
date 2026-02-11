@@ -49,6 +49,8 @@ export async function GET(
       change,
       changePercent: changePct * 100,
       avg_volume_20d: metrics?.avg_volume_20d,
+      volume: metrics?.volume ?? null,
+      pe_ratio: metrics?.pe_ratio ?? null,
       year_high: metrics?.year_high,
       year_low: metrics?.year_low,
       analyst_count: coverage?.analyst_count ?? 0,

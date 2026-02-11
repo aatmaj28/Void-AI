@@ -28,15 +28,18 @@ import {
   AreaChart,
   Area,
 } from "recharts"
+import {
+  Tooltip as UITooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
+import { Info } from "lucide-react"
 
 // Summary stats are computed from real data in the component
 
-// Generate trend data
-const trendData = Array.from({ length: 30 }, (_, i) => ({
-  day: i + 1,
-  opportunities: Math.floor(35 + Math.random() * 20 + i * 0.3),
-  avgScore: 72 + Math.random() * 10,
-}))
+// Trend data length by range (used in component via useMemo)
+const getTrendLength = (range: string) =>
+  range === "7D" ? 7 : range === "30D" ? 30 : range === "90D" ? 90 : 12
 
 // Coverage heatmap data
 const sectors = ["Technology", "Healthcare", "Finance", "Industrial", "Consumer", "Energy"]
@@ -50,6 +53,9 @@ const heatmapData = sectors.map((sector) => ({
   })),
 }))
 
+const GAP_SCORE_INFO =
+  "Combined score (0–100) measuring how under-covered a stock is vs. peers, based on analyst coverage, trading activity, and quality. Higher = stronger opportunity."
+
 function SummaryCard({
   title,
   value,
@@ -57,6 +63,7 @@ function SummaryCard({
   change,
   trend,
   highlight,
+  infoTooltip,
 }: {
   title: string
   value: string
@@ -64,6 +71,7 @@ function SummaryCard({
   change: string
   trend: string
   highlight?: boolean
+  infoTooltip?: string
 }) {
   return (
     <Card
@@ -87,7 +95,21 @@ function SummaryCard({
         </div>
         <div className="mt-4">
           <p className="text-2xl font-bold">{value}</p>
-          <p className="text-sm text-muted-foreground">{title}</p>
+          <p className="text-sm text-muted-foreground flex items-center gap-1.5">
+            {title}
+            {infoTooltip && (
+              <UITooltip>
+                <TooltipTrigger asChild>
+                  <span className="inline-flex text-muted-foreground hover:text-foreground cursor-help" aria-label="What does this mean?">
+                    <Info className="h-3.5 w-3.5" />
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="max-w-xs text-left">
+                  {infoTooltip}
+                </TooltipContent>
+              </UITooltip>
+            )}
+          </p>
         </div>
       </CardContent>
     </Card>
@@ -167,6 +189,15 @@ export default function DashboardPage() {
 
   const recentAlerts = mockAlerts.slice(0, 5)
 
+  const trendData = React.useMemo(() => {
+    const n = getTrendLength(timeRange)
+    return Array.from({ length: n }, (_, i) => ({
+      day: i + 1,
+      opportunities: Math.floor(35 + Math.random() * 20 + (i / Math.max(n - 1, 1)) * 15),
+      avgScore: 72 + Math.random() * 10,
+    }))
+  }, [timeRange])
+
   const summaryStats = [
     {
       title: "Total Stocks Tracked",
@@ -198,6 +229,7 @@ export default function DashboardPage() {
       icon: Activity,
       change: "",
       trend: "up" as const,
+      infoTooltip: GAP_SCORE_INFO,
     },
   ]
 
@@ -412,28 +444,26 @@ export default function DashboardPage() {
               </p>
             </CardHeader>
             <CardContent>
-              <div className="overflow-x-auto">
-                <div className="min-w-[400px]">
-                  <div className="grid grid-cols-5 gap-1 mb-2">
-                    <div /> {/* Empty corner */}
-                    {marketCapRanges.map((cap) => (
-                      <div
-                        key={cap}
-                        className="text-xs text-muted-foreground text-center py-1"
-                      >
-                        {cap}
-                      </div>
-                    ))}
-                  </div>
+              <div className="overflow-x-auto w-full">
+                <div className="w-full grid grid-cols-[auto_1fr_1fr_1fr_1fr] gap-2">
+                  <div /> {/* Empty corner */}
+                  {marketCapRanges.map((cap) => (
+                    <div
+                      key={cap}
+                      className="text-xs text-muted-foreground text-center py-1"
+                    >
+                      {cap}
+                    </div>
+                  ))}
                   {heatmapData.map((row) => (
-                    <div key={row.sector} className="grid grid-cols-5 gap-1 mb-1">
+                    <React.Fragment key={row.sector}>
                       <div className="text-xs text-muted-foreground flex items-center pr-2 truncate">
                         {row.sector}
                       </div>
                       {row.data.map((cell) => (
                         <div
                           key={cell.cap}
-                          className="aspect-square rounded-md flex items-center justify-center text-xs font-mono cursor-pointer hover:ring-1 hover:ring-primary transition-all"
+                          className="min-h-[2.5rem] rounded-md flex items-center justify-center text-xs font-mono cursor-pointer hover:ring-1 hover:ring-primary transition-all"
                           style={{
                             backgroundColor: `rgba(124, 58, 237, ${cell.value / 100})`,
                             color: cell.value > 50 ? "#fff" : "#a1a1aa",
@@ -443,7 +473,7 @@ export default function DashboardPage() {
                           {cell.value}
                         </div>
                       ))}
-                    </div>
+                    </React.Fragment>
                   ))}
                 </div>
               </div>

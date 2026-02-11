@@ -12,6 +12,7 @@ import {
   ChevronsUpDown,
   X,
   Plus,
+  Info,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -33,6 +34,11 @@ import {
   Line,
   ResponsiveContainer,
 } from "recharts"
+import {
+  Tooltip as UITooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 
 const sectors = ["All", "Technology", "Healthcare", "Finance", "Industrial", "Consumer", "Energy", "Communications", "Information Technology", "Real Estate", "Consumer Discretionary", "Consumer Staples", "Materials", "Utilities", "Communication Services"]
 const opportunityTypes = ["All", "High Priority", "Strong Opportunity", "Moderate Opportunity", "Low Priority"]
@@ -76,12 +82,18 @@ function OpportunityTypeBadge({ type }: { type: string }) {
   )
 }
 
+const GAP_SCORE_INFO =
+  "Gap Score measures how under-covered a stock is relative to its trading activity. Higher scores indicate stronger opportunities (high activity, low analyst coverage)."
+const ACTIVITY_SCORE_INFO =
+  "Activity Score reflects trading volume and momentum relative to sector peers. Higher values suggest more market interest."
+
 function SortHeader({
   label,
   sortKey,
   currentSort,
   direction,
   onSort,
+  infoTooltip,
   className = "",
 }: {
   label: string
@@ -89,27 +101,42 @@ function SortHeader({
   currentSort: SortKey
   direction: SortDirection
   onSort: (key: SortKey) => void
+  infoTooltip?: string
   className?: string
 }) {
   const isActive = currentSort === sortKey
 
   return (
-    <button
-      type="button"
-      onClick={() => onSort(sortKey)}
-      className={`flex items-center gap-1 font-medium hover:text-foreground transition-colors ${className}`}
-    >
-      {label}
-      {isActive ? (
-        direction === "asc" ? (
-          <ChevronUp className="h-3 w-3" />
+    <div className={`flex items-center gap-1 ${className}`}>
+      <button
+        type="button"
+        onClick={() => onSort(sortKey)}
+        className="flex items-center gap-1 font-medium hover:text-foreground transition-colors"
+      >
+        {label}
+        {isActive ? (
+          direction === "asc" ? (
+            <ChevronUp className="h-3 w-3" />
+          ) : (
+            <ChevronDown className="h-3 w-3" />
+          )
         ) : (
-          <ChevronDown className="h-3 w-3" />
-        )
-      ) : (
-        <ChevronsUpDown className="h-3 w-3 opacity-50" />
+          <ChevronsUpDown className="h-3 w-3 opacity-50" />
+        )}
+      </button>
+      {infoTooltip && (
+        <UITooltip>
+          <TooltipTrigger asChild>
+            <span className="inline-flex text-muted-foreground hover:text-foreground cursor-help">
+              <Info className="h-3.5 w-3.5" />
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="top" className="max-w-xs">
+            <p className="text-sm">{infoTooltip}</p>
+          </TooltipContent>
+        </UITooltip>
       )}
-    </button>
+    </div>
   )
 }
 
@@ -299,8 +326,18 @@ export default function OpportunitiesPage() {
               </div>
 
               <div>
-                <label className="text-sm font-medium mb-2 block">
+                <label className="text-sm font-medium mb-2 block flex items-center gap-1.5">
                   Min Gap Score: {minGapScore}
+                  <UITooltip>
+                    <TooltipTrigger asChild>
+                      <span className="inline-flex text-muted-foreground hover:text-foreground cursor-help">
+                        <Info className="h-3.5 w-3.5" />
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" className="max-w-xs">
+                      <p className="text-sm">{GAP_SCORE_INFO}</p>
+                    </TooltipContent>
+                  </UITooltip>
                 </label>
                 <Slider
                   value={[minGapScore]}
@@ -378,6 +415,7 @@ export default function OpportunitiesPage() {
                       currentSort={sortKey}
                       direction={sortDirection}
                       onSort={handleSort}
+                      infoTooltip={GAP_SCORE_INFO}
                       className="justify-end"
                     />
                   </th>
@@ -388,6 +426,7 @@ export default function OpportunitiesPage() {
                       currentSort={sortKey}
                       direction={sortDirection}
                       onSort={handleSort}
+                      infoTooltip={ACTIVITY_SCORE_INFO}
                       className="justify-end"
                     />
                   </th>

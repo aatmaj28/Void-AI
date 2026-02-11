@@ -26,6 +26,8 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Logo } from "@/components/logo"
 import { Footer } from "@/components/footer"
 import { useUser } from "@/lib/user-context"
@@ -39,6 +41,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { useRouter } from "next/navigation"
+import { toast } from "@/hooks/use-toast"
 
 const features = [
   {
@@ -238,31 +241,154 @@ function AnimatedBackground() {
   )
 }
 
+function ContactUsBlock() {
+  const [name, setName] = useState("")
+  const [email, setEmail] = useState("")
+  const [message, setMessage] = useState("")
+  const [status, setStatus] = useState<"idle" | "sending" | "success" | "error">("idle")
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setStatus("sending")
+    try {
+      const res = await fetch("/api/contact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, email, message }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Failed to send")
+      setStatus("idle")
+      setName("")
+      setEmail("")
+      setMessage("")
+      toast({
+        title: "Message sent",
+        description: "We'll get back to you soon.",
+      })
+    } catch {
+      setStatus("error")
+      toast({
+        title: "Failed to send",
+        description: "Please try again or email us directly.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  return (
+    <div className="text-left">
+      <h3 className="text-xl font-semibold mb-2">Contact Us</h3>
+      <p className="text-sm text-muted-foreground mb-4">
+        Northeastern University, Boston • Spring 2026
+      </p>
+      <div className="flex items-center flex-nowrap gap-x-2 text-sm text-muted-foreground mb-4 shrink-0">
+        <a href="mailto:salunke.aa@northeastern.edu" className="text-primary hover:underline whitespace-nowrap shrink-0">salunke.aa@northeastern.edu</a>
+        <span className="text-muted-foreground/70 shrink-0">·</span>
+        <a href="mailto:mahendrakar.v@northeastern.edu" className="text-primary hover:underline whitespace-nowrap shrink-0">mahendrakar.v@northeastern.edu</a>
+      </div>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <Label htmlFor="contact-name" className="block mb-1.5">Name</Label>
+          <Input
+            id="contact-name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Your name"
+            required
+          />
+        </div>
+        <div>
+          <Label htmlFor="contact-email" className="block mb-1.5">Email / Contact</Label>
+          <Input
+            id="contact-email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="your@email.com"
+            required
+          />
+        </div>
+        <div>
+          <Label htmlFor="contact-message" className="block mb-1.5">Message</Label>
+          <textarea
+            id="contact-message"
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            placeholder="Your message"
+            rows={4}
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            required
+          />
+        </div>
+        <Button type="submit" disabled={status === "sending"} className="gap-2">
+          {status === "sending" ? "Sending…" : "Send"}
+        </Button>
+      </form>
+    </div>
+  )
+}
+
 function FloatingCards() {
-  const cards = [
-    { ticker: "IONQ", change: "+12.4%", type: "positive" },
-    { ticker: "BTDR", change: "+8.7%", type: "positive" },
-    { ticker: "NVAX", change: "-3.2%", type: "negative" },
+  const leftCards = [
+    { ticker: "IONQ", change: "+12.4%", type: "positive" as const },
+    { ticker: "BTDR", change: "+8.7%", type: "positive" as const },
+    { ticker: "NVAX", change: "-3.2%", type: "negative" as const },
   ]
+  const rightCards = [
+    { ticker: "SOFI", change: "+4.2%", type: "positive" as const },
+    { ticker: "MSTR", change: "+6.8%", type: "positive" as const },
+    { ticker: "COIN", change: "+9.3%", type: "positive" as const },
+  ]
+
+  // Triangle: 3 points per side, closer together. Left: top, left-mid, bottom-right. Right: top, right-mid, bottom-left.
+  const leftPositions = [
+    { left: "14%", top: "36%" },   // top
+    { left: "6%", top: "50%" },    // left
+    { left: "20%", top: "60%" },   // bottom-right
+  ]
+  const rightPositions = [
+    { right: "14%", top: "36%" },  // top
+    { right: "6%", top: "50%" },   // right
+    { right: "20%", top: "60%" },  // bottom-left
+  ]
+
+  const cardClass = "absolute bg-card/80 backdrop-blur-sm border border-border rounded-lg pl-4 pr-4 py-3 shadow-lg animate-roam"
 
   return (
     <div className="absolute inset-0 overflow-hidden pointer-events-none hidden lg:block">
-      {cards.map((card, i) => (
+      {/* Left side: 3 cards in triangle, each doing roaming motion */}
+      {leftCards.map((card, i) => (
         <div
-          key={card.ticker}
-          className={`absolute bg-card/80 backdrop-blur-sm border border-border rounded-lg p-3 shadow-lg ${i === 0
-            ? "top-32 right-24 animate-float"
-            : i === 1
-              ? "top-48 right-48 animate-float-delayed"
-              : "top-64 right-16 animate-float-slow"
-            }`}
+          key={`left-${card.ticker}`}
+          className={cardClass}
+          style={{
+            ...leftPositions[i],
+            animationDelay: `${i * 1.2}s`,
+          }}
         >
           <div className="flex items-center gap-3">
             <div className="text-sm font-mono font-semibold">{card.ticker}</div>
-            <div
-              className={`text-sm font-mono ${card.type === "positive" ? "text-success" : "text-destructive"
-                }`}
-            >
+            <div className={`text-sm font-mono ${card.type === "positive" ? "text-success" : "text-destructive"}`}>
+              {card.change}
+            </div>
+          </div>
+          <div className="text-xs text-muted-foreground mt-1">Gap Score: 89</div>
+        </div>
+      ))}
+      {/* Right side: 3 cards in triangle, each doing roaming motion */}
+      {rightCards.map((card, i) => (
+        <div
+          key={`right-${card.ticker}`}
+          className={cardClass}
+          style={{
+            ...rightPositions[i],
+            animationDelay: `${0.6 + i * 1.2}s`,
+          }}
+        >
+          <div className="flex items-center gap-3">
+            <div className="text-sm font-mono font-semibold">{card.ticker}</div>
+            <div className={`text-sm font-mono ${card.type === "positive" ? "text-success" : "text-destructive"}`}>
               {card.change}
             </div>
           </div>
@@ -639,14 +765,14 @@ export default function LandingPage() {
               {features.map((feature, index) => (
                 <ScrollReveal key={feature.title} direction="up" delay={index * 0.05}>
                   <Card
-                    className="p-6 bg-card border-border hover:border-primary/50 transition-all duration-300 hover:shadow-lg hover:shadow-primary/5 hover:-translate-y-1 group"
+                    className="p-6 bg-card border-border hover:border-primary/50 transition-all duration-300 hover:shadow-lg hover:shadow-primary/5 hover:-translate-y-1 group h-full flex flex-col"
                     style={{ animationDelay: `${index * 100}ms` }}
                   >
-                    <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center mb-4 group-hover:bg-primary/20 transition-colors">
+                    <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center mb-4 group-hover:bg-primary/20 transition-colors shrink-0">
                       <feature.icon className="h-6 w-6 text-primary" />
                     </div>
-                    <h3 className="text-lg font-semibold mb-2">{feature.title}</h3>
-                    <p className="text-sm text-muted-foreground">
+                    <h3 className="text-lg font-semibold mb-2 shrink-0">{feature.title}</h3>
+                    <p className="text-sm text-muted-foreground min-h-[3.5rem]">
                       {feature.description}
                     </p>
                   </Card>
@@ -676,29 +802,36 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* CTA Section */}
+      {/* CTA + Contact Us Section */}
       <section className="py-20 md:py-32 bg-gradient-to-br from-primary/10 via-background to-cyan/10">
-        <div className="container mx-auto px-4 text-center">
+        <div className="container mx-auto px-4">
           <ScrollReveal direction="up" duration={0.6}>
-            <h2 className="text-3xl md:text-4xl font-bold mb-4">
-              {user ? "Your opportunities await" : "Ready to explore the void?"}
-            </h2>
-            <p className="text-muted-foreground max-w-xl mx-auto mb-8">
-              {user
-                ? "Continue exploring under-covered investment opportunities in your dashboard."
-                : "Start discovering under-covered investment opportunities today. No credit card required."
-              }
-            </p>
-            <Button
-              size="lg"
-              asChild
-              className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2 px-8"
-            >
-              <Link href={user ? "/dashboard" : "/register"}>
-                {user ? "Go to Dashboard" : "Get Started Free"}
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            </Button>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-32 items-start max-w-5xl mx-auto">
+              <div className="text-left lg:justify-self-start lg:pr-4">
+                <h2 className="text-3xl md:text-4xl font-bold mb-4">
+                  {user ? "Your opportunities await" : "Ready to explore the void?"}
+                </h2>
+                <p className="text-muted-foreground max-w-lg mb-8">
+                  {user
+                    ? "Continue exploring under-covered investment opportunities in your dashboard."
+                    : "Start discovering under-covered investment opportunities today. No credit card required."
+                  }
+                </p>
+                <Button
+                  size="lg"
+                  asChild
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2 px-8"
+                >
+                  <Link href={user ? "/dashboard" : "/register"}>
+                    {user ? "Go to Dashboard" : "Get Started Free"}
+                    <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </Button>
+              </div>
+              <div className="lg:justify-self-end lg:pl-4">
+                <ContactUsBlock />
+              </div>
+            </div>
           </ScrollReveal>
         </div>
       </section>
@@ -706,41 +839,24 @@ export default function LandingPage() {
       <Footer />
 
       <style jsx>{`
-        @keyframes float {
+        /* Circular roaming: cards drift in a circle around their base position; -50%-50% centers card on orbit point */
+        @keyframes roam {
           0%,
           100% {
-            transform: translateY(0);
+            transform: translate(-50%, -50%) translate(0, 0) translateY(0);
+          }
+          25% {
+            transform: translate(-50%, -50%) translate(14px, -14px) translateY(-6px);
           }
           50% {
-            transform: translateY(-10px);
+            transform: translate(-50%, -50%) translate(0, -28px) translateY(-4px);
+          }
+          75% {
+            transform: translate(-50%, -50%) translate(-14px, -14px) translateY(-8px);
           }
         }
-        @keyframes float-delayed {
-          0%,
-          100% {
-            transform: translateY(0);
-          }
-          50% {
-            transform: translateY(-15px);
-          }
-        }
-        @keyframes float-slow {
-          0%,
-          100% {
-            transform: translateY(0);
-          }
-          50% {
-            transform: translateY(-8px);
-          }
-        }
-        :global(.animate-float) {
-          animation: float 3s ease-in-out infinite;
-        }
-        :global(.animate-float-delayed) {
-          animation: float-delayed 4s ease-in-out infinite;
-        }
-        :global(.animate-float-slow) {
-          animation: float-slow 5s ease-in-out infinite;
+        :global(.animate-roam) {
+          animation: roam 10s ease-in-out infinite;
         }
       `}</style>
     </div>
