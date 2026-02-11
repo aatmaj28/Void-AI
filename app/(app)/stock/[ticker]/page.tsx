@@ -190,6 +190,11 @@ export default function StockDetailPage({ params }: { params: Promise<{ ticker: 
   const [news, setNews] = useState<NewsItem[]>([])
   const [newsLoading, setNewsLoading] = useState(true)
   const [newsError, setNewsError] = useState<string | null>(null)
+  const [secFilings, setSecFilings] = useState<Array<{ type: string; date: string; title: string; url: string }>>([])
+  const [secFilingsLoading, setSecFilingsLoading] = useState(false)
+  const [secFilingsError, setSecFilingsError] = useState<string | null>(null)
+  const [volumeHistory, setVolumeHistory] = useState<Array<{ date: string; volume: number }>>([])
+  const [volumeHistoryLoading, setVolumeHistoryLoading] = useState(false)
 
   useEffect(() => {
     if (!ticker) return
@@ -252,6 +257,46 @@ export default function StockDetailPage({ params }: { params: Promise<{ ticker: 
       .finally(() => setNewsLoading(false))
   }, [ticker])
 
+  // Load SEC filings (10-K, 10-Q, 8-K) from EDGAR
+  useEffect(() => {
+    if (!ticker) return
+    setSecFilingsLoading(true)
+    setSecFilingsError(null)
+    fetch(`/api/stock/${ticker}/sec-filings`)
+      .then((res) => {
+        if (!res.ok) {
+          const msg = res.status === 404 ? "No SEC filings found for this ticker" : "Failed to load SEC filings"
+          throw new Error(msg)
+        }
+        return res.json()
+      })
+      .then((data: { filings?: Array<{ type: string; date: string; title: string; url: string }> }) => {
+        setSecFilings(Array.isArray(data?.filings) ? data.filings : [])
+      })
+      .catch((e) => {
+        setSecFilingsError(e instanceof Error ? e.message : "Failed to load SEC filings")
+        setSecFilings([])
+      })
+      .finally(() => setSecFilingsLoading(false))
+  }, [ticker])
+
+  // Load volume history from market_data (for Activity tab chart)
+  useEffect(() => {
+    if (!ticker) return
+    setVolumeHistoryLoading(true)
+    fetch(`/api/stock/${ticker}/history?days=30`)
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to load volume history")
+        return res.json()
+      })
+      .then((data: { data?: Array<{ date: string; volume: number }> }) => {
+        const list = Array.isArray(data?.data) ? data.data : []
+        setVolumeHistory(list.map((d) => ({ date: d.date, volume: Number(d.volume) || 0 })))
+      })
+      .catch(() => setVolumeHistory([]))
+      .finally(() => setVolumeHistoryLoading(false))
+  }, [ticker])
+
   if (loading) {
     return (
       <div className="container mx-auto px-4 py-8">
@@ -305,14 +350,6 @@ export default function StockDetailPage({ params }: { params: Promise<{ ticker: 
     { name: "Buy", value: 2, color: "#10b981" },
     { name: "Hold", value: 1, color: "#f59e0b" },
     { name: "Sell", value: 0, color: "#ef4444" },
-  ]
-
-  const documents = [
-    { type: "10-K", date: "2024-12-15", title: "Annual Report 2024" },
-    { type: "10-Q", date: "2024-11-08", title: "Quarterly Report Q3 2024" },
-    { type: "8-K", date: "2024-10-22", title: "Current Report - Executive Changes" },
-    { type: "10-Q", date: "2024-08-09", title: "Quarterly Report Q2 2024" },
-    { type: "8-K", date: "2024-07-15", title: "Current Report - Earnings Release" },
   ]
 
   const handleSendMessage = () => {
@@ -669,7 +706,9 @@ export default function StockDetailPage({ params }: { params: Promise<{ ticker: 
                 <div className="text-center">
                   <p className="text-sm text-muted-foreground mb-2">Relative Volume</p>
                   <p className="text-4xl font-mono font-bold">
-                    {(stock.volume / stock.avgVolume).toFixed(2)}x
+                    {stock.avgVolume
+                      ? `${(stock.volume / stock.avgVolume).toFixed(2)}x`
+                      : "—"}
                   </p>
                   <p className="text-sm text-muted-foreground mt-2">vs 20-day average</p>
                 </div>
@@ -691,7 +730,7 @@ export default function StockDetailPage({ params }: { params: Promise<{ ticker: 
                 <div className="text-center">
                   <p className="text-sm text-muted-foreground mb-2">30-Day Volatility</p>
                   <p className="text-4xl font-mono font-bold">
-                    {Math.abs(stock.high52w - stock.low52w) / stock.price * 10}%
+                    {(Math.abs(stock.high52w - stock.low52w) / stock.price * 10).toFixed(3)}%
                   </p>
                   <p className="text-sm text-muted-foreground mt-2">Annualized</p>
                 </div>
@@ -702,29 +741,37 @@ export default function StockDetailPage({ params }: { params: Promise<{ ticker: 
           <Card>
             <CardHeader>
               <CardTitle>Volume History</CardTitle>
+              <p className="text-sm text-muted-foreground">Last 30 trading days (from market data)</p>
             </CardHeader>
             <CardContent>
               <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
-                    data={stock.priceHistory.map((_, i) => ({
-                      day: i + 1,
-                      volume: Math.floor(stock.avgVolume * (0.5 + Math.random())),
-                    }))}
-                  >
-                    <XAxis dataKey="day" axisLine={false} tickLine={false} />
-                    <YAxis axisLine={false} tickLine={false} tickFormatter={(v) => `${(v / 1e6).toFixed(0)}M`} />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: "#141417",
-                        border: "1px solid #27272a",
-                        borderRadius: "8px",
-                      }}
-                      formatter={(value: number) => [formatVolume(value), "Volume"]}
-                    />
-                    <Bar dataKey="volume" fill="#06b6d4" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
+                {volumeHistoryLoading ? (
+                  <div className="h-full flex items-center justify-center text-muted-foreground">Loading volume history…</div>
+                ) : volumeHistory.length === 0 ? (
+                  <div className="h-full flex items-center justify-center text-muted-foreground">No volume history available. Run the pipeline to populate market data.</div>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={volumeHistory}>
+                      <XAxis
+                        dataKey="date"
+                        axisLine={false}
+                        tickLine={false}
+                        tickFormatter={(v) => (v ? new Date(v).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "")}
+                      />
+                      <YAxis axisLine={false} tickLine={false} tickFormatter={(v) => `${(v / 1e6).toFixed(1)}M`} />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: "#141417",
+                          border: "1px solid #27272a",
+                          borderRadius: "8px",
+                        }}
+                        labelFormatter={(v) => (v ? new Date(v).toLocaleDateString() : "")}
+                        formatter={(value: number) => [formatVolume(value), "Volume"]}
+                      />
+                      <Bar dataKey="volume" fill="#06b6d4" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -924,36 +971,50 @@ export default function StockDetailPage({ params }: { params: Promise<{ ticker: 
           <Card>
             <CardHeader>
               <CardTitle>SEC Filings</CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Links open on SEC EDGAR. 10-K, 10-Q, and 8-K filings for {stock.ticker}.
+              </p>
             </CardHeader>
             <CardContent>
-              <div className="space-y-2">
-                {documents.map((doc, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center justify-between p-3 rounded-lg hover:bg-secondary/50 transition-colors cursor-pointer"
-                  >
-                    <div className="flex items-center gap-3">
-                      <Badge
-                        variant="outline"
-                        className={
-                          doc.type === "10-K"
-                            ? "border-primary/50 text-primary"
-                            : doc.type === "10-Q"
-                              ? "border-cyan/50 text-cyan"
-                              : "border-warning/50 text-warning"
-                        }
-                      >
-                        {doc.type}
-                      </Badge>
-                      <div>
-                        <p className="font-medium text-sm">{doc.title}</p>
-                        <p className="text-xs text-muted-foreground">{doc.date}</p>
+              {secFilingsLoading ? (
+                <div className="py-8 text-center text-muted-foreground">Loading SEC filings…</div>
+              ) : secFilingsError ? (
+                <div className="py-4 text-sm text-destructive">{secFilingsError}</div>
+              ) : secFilings.length === 0 ? (
+                <div className="py-8 text-center text-muted-foreground">No SEC filings found for this ticker.</div>
+              ) : (
+                <div className="space-y-2">
+                  {secFilings.map((doc, i) => (
+                    <a
+                      key={`${doc.type}-${doc.date}-${i}`}
+                      href={doc.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-between p-3 rounded-lg hover:bg-secondary/50 transition-colors cursor-pointer group"
+                    >
+                      <div className="flex items-center gap-3">
+                        <Badge
+                          variant="outline"
+                          className={
+                            doc.type === "10-K"
+                              ? "border-primary/50 text-primary"
+                              : doc.type === "10-Q"
+                                ? "border-cyan/50 text-cyan"
+                                : "border-warning/50 text-warning"
+                          }
+                        >
+                          {doc.type}
+                        </Badge>
+                        <div>
+                          <p className="font-medium text-sm">{doc.title}</p>
+                          <p className="text-xs text-muted-foreground">{doc.date}</p>
+                        </div>
                       </div>
-                    </div>
-                    <ExternalLink className="h-4 w-4 text-muted-foreground" />
-                  </div>
-                ))}
-              </div>
+                      <ExternalLink className="h-4 w-4 text-muted-foreground group-hover:text-primary" />
+                    </a>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

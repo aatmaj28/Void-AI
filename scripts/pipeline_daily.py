@@ -132,6 +132,17 @@ def fetch_one_ticker(ticker: str):
             ch3 = round(float(pc3), 4) if pd.notna(pc3) else 0.0
             yh = round(float(hist["High"].max()), 4)
             yl = round(float(hist["Low"].min()), 4)
+            # Latest day volume (for stock detail page)
+            last_vol = hist["Volume"].iloc[-1]
+            vol_latest = 0 if (last_vol is None or (isinstance(last_vol, float) and np.isnan(last_vol))) else int(last_vol)
+            # Trailing P/E from yfinance info (for stock detail page)
+            pe_raw = info.get("trailingPE")
+            pe_ratio = None
+            if pe_raw is not None and not (isinstance(pe_raw, float) and np.isnan(pe_raw)):
+                try:
+                    pe_ratio = round(float(pe_raw), 4)
+                except (TypeError, ValueError):
+                    pass
             metrics_row = {
                 "ticker": ticker,
                 "avg_volume_20d": avg_vol,
@@ -141,6 +152,8 @@ def fetch_one_ticker(ticker: str):
                 "current_price": cur,
                 "year_high": yh,
                 "year_low": yl,
+                "volume": vol_latest,
+                "pe_ratio": pe_ratio,
                 "updated_at": datetime.utcnow().isoformat(),
             }
 
