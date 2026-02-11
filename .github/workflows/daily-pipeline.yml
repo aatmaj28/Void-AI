@@ -6,8 +6,8 @@ name: Daily Pipeline
 
 on:
   schedule:
-    # 6:00 AM Eastern (UTC-5) = 11:00 UTC; for EDT (UTC-4) use 10:00 UTC
-    - cron: "0 11 * * *"
+    # Temporary: 10:00 PM Eastern (UTC-5) = 03:00 UTC. Revert to 6 AM EST = 11:00 UTC when done.
+    - cron: "0 3 * * *"
   workflow_dispatch:
 
 jobs:
