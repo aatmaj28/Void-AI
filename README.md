@@ -19,6 +19,8 @@ All documentation lives in the **[docs/](docs/)** folder:
 | [docs/STEP3_ANALYST_COVERAGE.md](docs/STEP3_ANALYST_COVERAGE.md) | Analyst coverage |
 | [docs/STEP4_SCORING_ENGINE.md](docs/STEP4_SCORING_ENGINE.md) | Scoring engine |
 | [docs/PIPELINE_AUTOMATION.md](docs/PIPELINE_AUTOMATION.md) | Daily pipeline (GitHub Actions / cron) |
+| [docs/PIPELINE_TASK_SCHEDULER_WINDOWS.md](docs/PIPELINE_TASK_SCHEDULER_WINDOWS.md) | Run pipeline daily on Windows (Task Scheduler) |
+| [docs/PIPELINE_RAILWAY_CRON.md](docs/PIPELINE_RAILWAY_CRON.md) | Run pipeline on Railway or Render (avoid 429) |
 | [docs/YFINANCE_USAGE.md](docs/YFINANCE_USAGE.md) | yfinance correct usage and common mistake |
 
 ---
