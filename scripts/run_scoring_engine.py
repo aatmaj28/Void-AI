@@ -172,6 +172,13 @@ def main():
     ).clip(0, 100)
     df["opportunity_type"] = df["gap_score"].map(opportunity_type)
     df["confidence"] = 70.0  # placeholder; can add peer group size / freshness later
+
+    # Replace any NaN/inf in numeric columns before sending to Supabase (JSON can't represent NaN/Infinity)
+    for col in ["coverage_score", "activity_score", "quality_score", "gap_score", "confidence"]:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+            df[col] = df[col].replace([np.inf, -np.inf], np.nan).fillna(0.0)
+
     df["updated_at"] = datetime.utcnow().isoformat()
     records = df[
         [
