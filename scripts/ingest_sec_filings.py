@@ -85,28 +85,17 @@ def top_tickers(supabase: Client, limit: int = 50) -> List[str]:
 
 
 def ticker_to_cik(supabase: Client, tickers: List[str], ua: str) -> Dict[str, str]:
-    """Resolve ticker -> CIK from companies first, then SEC company_tickers.json."""
+    """Resolve ticker -> CIK from SEC company_tickers.json."""
     out: Dict[str, str] = {}
     if not tickers:
         return out
 
-    # Prefer companies.cik
-    r = supabase.table("companies").select("ticker, cik").in_("ticker", tickers).execute()
-    for row in (r.data or []):
-        if row.get("cik"):
-            out[row["ticker"]] = str(row["cik"]).zfill(10)
-
-    missing = [t for t in tickers if t not in out]
-    if not missing:
-        return out
-
-    # Fallback: SEC company_tickers.json
     resp = requests.get(SEC_TICKERS, headers={"User-Agent": ua}, timeout=15)
     resp.raise_for_status()
     data = resp.json()
     for entry in data.values():
         t = entry.get("ticker")
-        if t in missing:
+        if t in tickers:
             out[t] = str(entry["cik_str"]).zfill(10)
     return out
 
