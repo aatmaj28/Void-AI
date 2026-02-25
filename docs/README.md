@@ -98,6 +98,9 @@ open http://localhost:3000
 |-----|-------------|
 | [README.md](README.md) | This file — project overview |
 | [QUICK_START.md](QUICK_START.md) | Create companies table in Supabase |
+| [Table Relationships & Schema](docs/TABLE_RELATIONSHIPS.md) | Database table relationships and schema |
+| [Supabase Pagination Fix](docs/SUPABASE_PAGINATION_FIX.md) | Fix for Supabase pagination issues |
+| [Ticker Universes](docs/TICKER_UNIVERSES.md) | Managing different ticker universes |
 | [POPULATE_GUIDE.md](POPULATE_GUIDE.md) | S&P 500 data population (Colab / local / CSV) |
 | [STEP2_MARKET_DATA.md](STEP2_MARKET_DATA.md) | Market data & stock metrics tables and import |
 | [STEP3_ANALYST_COVERAGE.md](STEP3_ANALYST_COVERAGE.md) | Analyst coverage table and import |
