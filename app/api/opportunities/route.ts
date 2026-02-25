@@ -33,22 +33,30 @@ export async function GET() {
   const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
   try {
-    const [companiesRes, metricsRes, coverageRes, scoresRes] = await Promise.all([
-      supabase.from("companies").select("ticker, name, sector, industry, market_cap"),
-      supabase.from("stock_metrics").select("ticker, current_price, price_change_1m, avg_volume_20d, year_high, year_low"),
-      supabase.from("analyst_coverage").select("ticker, analyst_count"),
-      supabase.from("coverage_gap_scores").select("ticker, gap_score, activity_score, quality_score, coverage_score, opportunity_type"),
-    ])
-
-    if (companiesRes.error || metricsRes.error || coverageRes.error || scoresRes.error) {
-      const err = companiesRes.error || metricsRes.error || coverageRes.error || scoresRes.error
-      return NextResponse.json({ error: err?.message ?? "Supabase error" }, { status: 500 })
+    async function fetchAll(tableName: string, selectFields: string) {
+      let allData: any[] = []
+      let pageSize = 1000
+      let offset = 0
+      while (true) {
+        const { data, error } = await supabase
+          .from(tableName)
+          .select(selectFields)
+          .range(offset, offset + pageSize - 1)
+        if (error) throw error
+        if (!data || data.length === 0) break
+        allData = [...allData, ...data]
+        if (data.length < pageSize) break
+        offset += pageSize
+      }
+      return allData
     }
 
-    const companies = (companiesRes.data ?? []) as { ticker: string; name: string | null; sector: string | null; industry: string | null; market_cap: number | null }[]
-    const metrics = (metricsRes.data ?? []) as { ticker: string; current_price: number | null; price_change_1m: number | null; avg_volume_20d: number | null; year_high: number | null; year_low: number | null }[]
-    const coverage = (coverageRes.data ?? []) as { ticker: string; analyst_count: number }[]
-    const scores = (scoresRes.data ?? []) as { ticker: string; gap_score: number; activity_score: number; quality_score: number; coverage_score: number; opportunity_type: string | null }[]
+    const [companies, metrics, coverage, scores] = await Promise.all([
+      fetchAll("companies", "ticker, name, sector, industry, market_cap"),
+      fetchAll("stock_metrics", "ticker, current_price, price_change_1m, avg_volume_20d, year_high, year_low"),
+      fetchAll("analyst_coverage", "ticker, analyst_count"),
+      fetchAll("coverage_gap_scores", "ticker, gap_score, activity_score, quality_score, coverage_score, opportunity_type"),
+    ])
 
     const metricsByTicker = Object.fromEntries(metrics.map((m) => [m.ticker, m]))
     const coverageByTicker = Object.fromEntries(coverage.map((c) => [c.ticker, c]))

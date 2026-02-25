@@ -51,16 +51,26 @@ def size_bucket(mcap):
         return "small"
     return "micro"
 
+def fetch_all(table_name, select_query="*"):
+    """Fetch all rows from a table using pagination."""
+    all_data = []
+    page_size = 1000
+    offset = 0
+    while True:
+        res = supabase.table(table_name).select(select_query).range(offset, offset + page_size - 1).execute()
+        data = res.data or []
+        all_data.extend(data)
+        if len(data) < page_size:
+            break
+        offset += page_size
+    return pd.DataFrame(all_data)
+
 def fetch_tables():
     print("Fetching companies, stock_metrics, analyst_coverage...")
-    companies = supabase.table("companies").select("ticker, sector, market_cap").execute()
-    metrics = supabase.table("stock_metrics").select("*").execute()
-    coverage = supabase.table("analyst_coverage").select("ticker, analyst_count").execute()
-    return (
-        pd.DataFrame(companies.data),
-        pd.DataFrame(metrics.data),
-        pd.DataFrame(coverage.data),
-    )
+    companies_df = fetch_all("companies", "ticker, sector, market_cap")
+    metrics_df = fetch_all("stock_metrics", "*")
+    coverage_df = fetch_all("analyst_coverage", "ticker, analyst_count")
+    return (companies_df, metrics_df, coverage_df)
 
 def merge_tables(companies, metrics, coverage):
     companies = companies.copy()
