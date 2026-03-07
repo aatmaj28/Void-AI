@@ -28,7 +28,7 @@ import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Input } from "@/components/ui/input"
 import { mockHypothesis, formatMarketCap, formatVolume, formatPercent } from "@/lib/mock-data"
-import { sendChatMessage } from "@/lib/rag-chat"
+import { sendChatMessage, sendChatMessageStream } from "@/lib/rag-chat"
 import { ChatBubble, ThinkingBubble } from "@/components/chat-bubble"
 import {
   LineChart,
@@ -195,15 +195,46 @@ export default function StockDetailPage({ params }: { params: Promise<{ ticker: 
     setChatMessages((prev) => [...prev, { role: "user", content: userMessage }])
     setChatInput("")
     setChatSending(true)
-    try {
-      const history = chatMessages.filter((_, i) => i > 0).map((m) => ({ role: m.role, content: m.content }))
-      const response = await sendChatMessage(userMessage, ticker, history)
-      setChatMessages((prev) => [...prev, { role: "assistant", content: response.reply }])
-    } catch (error) {
-      setChatMessages((prev) => [...prev, { role: "assistant", content: `Sorry, I encountered an error: ${error instanceof Error ? error.message : "Unknown error"}. Please try again.` }])
-    } finally {
-      setChatSending(false)
-    }
+
+    // Add empty assistant message
+    setChatMessages((prev) => [...prev, { role: "assistant", content: "" }])
+
+    const history = chatMessages.filter((_, i) => i > 0).map((m) => ({ role: m.role, content: m.content }))
+
+    await sendChatMessageStream(
+      userMessage,
+      ticker,
+      history,
+      (token) => {
+        setChatMessages((prev) => {
+          const updated = [...prev]
+          const lastIndex = updated.length - 1
+          updated[lastIndex] = {
+            ...updated[lastIndex],
+            content: updated[lastIndex].content + token
+          }
+          return updated
+        })
+      },
+      (sources) => {
+        // Optional: Handle sources
+      },
+      () => {
+        setChatSending(false)
+      },
+      (error) => {
+        setChatMessages((prev) => {
+          const updated = [...prev]
+          const lastIndex = updated.length - 1
+          updated[lastIndex] = {
+            ...updated[lastIndex],
+            content: `Sorry, I encountered an error: ${error}. Please try again.`
+          }
+          return updated
+        })
+        setChatSending(false)
+      }
+    )
   }
 
   return (
@@ -353,7 +384,7 @@ export default function StockDetailPage({ params }: { params: Promise<{ ticker: 
                 {chatMessages.map((message, i) => (
                   <ChatBubble key={i} role={message.role} content={message.content} />
                 ))}
-                {chatSending && <ThinkingBubble />}
+                {chatSending && chatMessages[chatMessages.length - 1]?.role === "assistant" && !chatMessages[chatMessages.length - 1]?.content && <ThinkingBubble />}
                 <div ref={chatEndRef} />
               </div>
 

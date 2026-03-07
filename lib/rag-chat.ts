@@ -63,3 +63,73 @@ export async function sendChatMessage(
 
     return response.json()
 }
+
+/**
+ * Send a chat message to the RAG API and receive a streaming response.
+ */
+export async function sendChatMessageStream(
+    message: string,
+    ticker: string | null,
+    history: ChatMessage[],
+    onToken: (token: string) => void,
+    onSources: (sources: SourceDocument[]) => void,
+    onDone: () => void,
+    onError: (error: string) => void,
+) {
+    try {
+        const response = await fetch(`${RAG_API_URL}/chat/stream`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                message,
+                ticker,
+                history: history.map((m) => ({ role: m.role, content: m.content })),
+            }),
+        })
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => null)
+            throw new Error(
+                errorData?.detail || `RAG API error: ${response.status} ${response.statusText}`
+            )
+        }
+
+        if (!response.body) throw new Error("ReadableStream not supported")
+
+        const reader = response.body.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ""
+
+        while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+
+            buffer += decoder.decode(value, { stream: true })
+            const lines = buffer.split("\n")
+            // The last element is either an incomplete line or an empty string, keep it in buffer
+            buffer = lines.pop() || ""
+
+            for (let line of lines) {
+                line = line.trim()
+                if (line.startsWith("data: ")) {
+                    const data = line.slice(6)
+                    if (data === "[DONE]") {
+                        onDone()
+                        return
+                    }
+                    try {
+                        const parsed = JSON.parse(data)
+                        if (parsed.token) onToken(parsed.token)
+                        if (parsed.sources) onSources(parsed.sources)
+                        if (parsed.error) onError(parsed.error)
+                    } catch (e) {
+                        // ignore JSON parse error on incomplete chunks if any somehow get here
+                    }
+                }
+            }
+        }
+        onDone()
+    } catch (error) {
+        onError(error instanceof Error ? error.message : "Stream error")
+    }
+}
