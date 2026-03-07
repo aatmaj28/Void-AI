@@ -18,7 +18,7 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { fetchOpportunities, type Opportunity } from "@/lib/opportunities"
 import { formatMarketCap, formatPercent } from "@/lib/mock-data"
-import { sendChatMessage } from "@/lib/rag-chat"
+import { sendChatMessage, sendChatMessageStream } from "@/lib/rag-chat"
 import { ChatBubble, ThinkingBubble } from "@/components/chat-bubble"
 
 type ChatMessage = { role: "user" | "assistant"; content: string }
@@ -85,28 +85,49 @@ export default function ExplorePage() {
     setInput("")
     setSending(true)
 
-    try {
-      const history = messages
-        .filter((_, i) => i > 0)
-        .map((m) => ({ role: m.role, content: m.content }))
+    // Add empty assistant message that will fill in
+    setMessages((prev) => [...prev, { role: "assistant", content: "" }])
 
-      const ticker = mode === "ticker" && active ? active.ticker : null
-      const response = await sendChatMessage(text, ticker, history)
+    const history = messages
+      .filter((_, i) => i > 0)
+      .map((m) => ({ role: m.role, content: m.content }))
 
-      const assistantMsg: ChatMessage = {
-        role: "assistant",
-        content: response.reply,
+    const ticker = mode === "ticker" && active ? active.ticker : null
+
+    await sendChatMessageStream(
+      text,
+      ticker,
+      history,
+      (token) => {
+        setMessages((prev) => {
+          const updated = [...prev]
+          const lastIndex = updated.length - 1
+          updated[lastIndex] = {
+            ...updated[lastIndex],
+            content: updated[lastIndex].content + token
+          }
+          return updated
+        })
+      },
+      (sources) => {
+        // Optional: Handle sources if needed
+      },
+      () => {
+        setSending(false)
+      },
+      (error) => {
+        setMessages((prev) => {
+          const updated = [...prev]
+          const lastIndex = updated.length - 1
+          updated[lastIndex] = {
+            ...updated[lastIndex],
+            content: `Sorry, I encountered an error: ${error}. Please try again.`
+          }
+          return updated
+        })
+        setSending(false)
       }
-      setMessages((prev) => [...prev, assistantMsg])
-    } catch (error) {
-      const errorMsg: ChatMessage = {
-        role: "assistant",
-        content: `Sorry, I encountered an error: ${error instanceof Error ? error.message : "Unknown error"}. Please try again.`,
-      }
-      setMessages((prev) => [...prev, errorMsg])
-    } finally {
-      setSending(false)
-    }
+    )
   }
 
   if (loading) {
@@ -197,8 +218,8 @@ export default function ExplorePage() {
                         setSelectedTicker(o.ticker)
                       }}
                       className={`w-full text-left px-3 py-2 rounded-md border text-sm transition-colors ${isActive
-                          ? "border-primary/40 bg-primary/10"
-                          : "border-border/60 hover:bg-secondary/60"
+                        ? "border-primary/40 bg-primary/10"
+                        : "border-border/60 hover:bg-secondary/60"
                         }`}
                     >
                       <div className="flex items-center justify-between gap-2">
@@ -301,7 +322,7 @@ export default function ExplorePage() {
               {messages.map((m, idx) => (
                 <ChatBubble key={idx} role={m.role} content={m.content} />
               ))}
-              {sending && <ThinkingBubble />}
+              {sending && messages[messages.length - 1]?.role === "assistant" && !messages[messages.length - 1]?.content && <ThinkingBubble />}
               {messages.length === 0 && (
                 <p className="text-xs text-muted-foreground text-center py-8">
                   Start by selecting a ticker on the left or asking a question here.
