@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import {
   MessageSquare,
@@ -18,6 +18,8 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { fetchOpportunities, type Opportunity } from "@/lib/opportunities"
 import { formatMarketCap, formatPercent } from "@/lib/mock-data"
+import { sendChatMessage } from "@/lib/rag-chat"
+import { ChatBubble, ThinkingBubble } from "@/components/chat-bubble"
 
 type ChatMessage = { role: "user" | "assistant"; content: string }
 
@@ -31,6 +33,13 @@ export default function ExplorePage() {
   const [mode, setMode] = useState<"ticker" | "global">("ticker")
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState("")
+  const [sending, setSending] = useState(false)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  // Auto-scroll to bottom when messages change or sending state changes
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+  }, [messages, sending])
 
   useEffect(() => {
     fetchOpportunities()
@@ -67,23 +76,37 @@ export default function ExplorePage() {
     ? opportunities.find((o) => o.ticker === selectedTicker) ?? null
     : null
 
-  const handleSend = () => {
+  const handleSend = async () => {
     const text = input.trim()
-    if (!text) return
-
-    const context = mode === "ticker" && active ? ` about ${active.ticker}` : ""
+    if (!text || sending) return
 
     const userMsg: ChatMessage = { role: "user", content: text }
-    const mockReply: ChatMessage = {
-      role: "assistant",
-      content:
-        `Mock RAG answer${context}. In the real version this will query SEC filings and VOID AI scores, ` +
-        `then respond with a cited analysis.\n\n` +
-        `For now, use this space to test the Explore & Chat UX.`,
-    }
-
-    setMessages((prev) => [...prev, userMsg, mockReply])
+    setMessages((prev) => [...prev, userMsg])
     setInput("")
+    setSending(true)
+
+    try {
+      const history = messages
+        .filter((_, i) => i > 0)
+        .map((m) => ({ role: m.role, content: m.content }))
+
+      const ticker = mode === "ticker" && active ? active.ticker : null
+      const response = await sendChatMessage(text, ticker, history)
+
+      const assistantMsg: ChatMessage = {
+        role: "assistant",
+        content: response.reply,
+      }
+      setMessages((prev) => [...prev, assistantMsg])
+    } catch (error) {
+      const errorMsg: ChatMessage = {
+        role: "assistant",
+        content: `Sorry, I encountered an error: ${error instanceof Error ? error.message : "Unknown error"}. Please try again.`,
+      }
+      setMessages((prev) => [...prev, errorMsg])
+    } finally {
+      setSending(false)
+    }
   }
 
   if (loading) {
@@ -119,7 +142,7 @@ export default function ExplorePage() {
             Explore &amp; Chat
           </h1>
           <p className="text-muted-foreground mt-1">
-            Interactive research workspace powered by VOID AI scores and (soon) SEC filings.
+            Interactive research workspace powered by VOID AI scores and SEC filings.
           </p>
         </div>
         {active && (
@@ -173,11 +196,10 @@ export default function ExplorePage() {
                       onClick={() => {
                         setSelectedTicker(o.ticker)
                       }}
-                      className={`w-full text-left px-3 py-2 rounded-md border text-sm transition-colors ${
-                        isActive
+                      className={`w-full text-left px-3 py-2 rounded-md border text-sm transition-colors ${isActive
                           ? "border-primary/40 bg-primary/10"
                           : "border-border/60 hover:bg-secondary/60"
-                      }`}
+                        }`}
                     >
                       <div className="flex items-center justify-between gap-2">
                         <div>
@@ -219,7 +241,7 @@ export default function ExplorePage() {
             <div>
               <CardTitle className="flex items-center gap-2">
                 <Sparkles className="h-5 w-5 text-primary" />
-                Analyst Copilot (mock)
+                Analyst Copilot
               </CardTitle>
               <p className="text-sm text-muted-foreground mt-1">
                 Ask focused questions about a selected ticker, or switch to global mode for
@@ -229,17 +251,15 @@ export default function ExplorePage() {
             <div className="flex flex-col items-end gap-2">
               <div className="inline-flex rounded-full border border-border bg-background p-0.5 text-xs">
                 <button
-                  className={`px-3 py-1 rounded-full ${
-                    mode === "ticker" ? "bg-primary text-primary-foreground" : ""
-                  }`}
+                  className={`px-3 py-1 rounded-full ${mode === "ticker" ? "bg-primary text-primary-foreground" : ""
+                    }`}
                   onClick={() => setMode("ticker")}
                 >
                   Focused on ticker
                 </button>
                 <button
-                  className={`px-3 py-1 rounded-full ${
-                    mode === "global" ? "bg-primary text-primary-foreground" : ""
-                  }`}
+                  className={`px-3 py-1 rounded-full ${mode === "global" ? "bg-primary text-primary-foreground" : ""
+                    }`}
                   onClick={() => setMode("global")}
                 >
                   Global
@@ -253,7 +273,7 @@ export default function ExplorePage() {
               )}
             </div>
           </CardHeader>
-          <CardContent className="flex-1 flex flex-col pt-0">
+          <CardContent className="flex-1 flex flex-col pt-0 min-h-0">
             {/* Chat history summary */}
             <div className="mb-3 flex items-center gap-2 text-xs text-muted-foreground">
               <History className="h-3 w-3" />
@@ -279,26 +299,15 @@ export default function ExplorePage() {
 
             <div className="flex-1 overflow-y-auto space-y-4 mb-4 pr-1">
               {messages.map((m, idx) => (
-                <div
-                  key={idx}
-                  className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
-                >
-                  <div
-                    className={`max-w-[80%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap ${
-                      m.role === "user"
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-secondary"
-                    }`}
-                  >
-                    {m.content}
-                  </div>
-                </div>
+                <ChatBubble key={idx} role={m.role} content={m.content} />
               ))}
+              {sending && <ThinkingBubble />}
               {messages.length === 0 && (
                 <p className="text-xs text-muted-foreground text-center py-8">
                   Start by selecting a ticker on the left or asking a question here.
                 </p>
               )}
+              <div ref={messagesEndRef} />
             </div>
 
             <div className="mb-3 flex flex-wrap gap-2">
@@ -323,6 +332,7 @@ export default function ExplorePage() {
               <Textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
+                disabled={sending}
                 placeholder={
                   mode === "ticker"
                     ? "Ask a question about the selected stock..."
@@ -336,8 +346,12 @@ export default function ExplorePage() {
                   }
                 }}
               />
-              <Button onClick={handleSend} className="h-10 w-10 rounded-full">
-                <Send className="h-4 w-4" />
+              <Button onClick={handleSend} disabled={sending} className="h-10 w-10 rounded-full">
+                {sending ? (
+                  <div className="h-4 w-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
               </Button>
             </div>
             {active && (
@@ -352,4 +366,3 @@ export default function ExplorePage() {
     </div>
   )
 }
-
