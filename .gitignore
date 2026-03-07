@@ -42,3 +42,7 @@ _tmp_*
 *.tsbuildinfo
 next-env.d.ts
 .vercel
+
+# Exclude rag-service and docs
+rag-service/
+docs/

@@ -1,104 +1,138 @@
 #!/usr/bin/env python3
 """
-Phase 4 RAG: Ingest SEC 10-K/10-Q for top 50 tickers by gap_score.
+Step 1: Ingest SEC 10-K, 10-Q, and 8-K filings into Haystack document store.
 
-- Fetches top 50 tickers from Supabase (coverage_gap_scores).
-- Resolves CIK from companies table or SEC company_tickers.json.
-- Downloads latest 10-K and 10-Q HTML per ticker (same logic as test_sec_fetch).
-- Extracts text with BeautifulSoup (default) or Jina AI Reader (optional).
-- Chunks with LangChain RecursiveCharacterTextSplitter, embeds with Mistral, upserts to DB.
+For ALL tickers in coverage_gap_scores:
+  - 1 most recent 10-K  (annual report)
+  - 2 most recent 10-Qs (quarterly reports)
+  - 3 most recent 8-Ks  (material events)
+
+Downloads HTML from SEC EDGAR, extracts text, tags sections,
+chunks, embeds with BAAI/bge-small-en-v1.5 (local, free),
+and writes to Haystack's PgvectorDocumentStore.
+
+Tracks ingested filings in `sec_documents` table to avoid re-processing.
+Safe to stop (Ctrl+C) and re-run — skips already-ingested filings.
 
 Usage:
   python scripts/ingest_sec_filings.py
 
 Env (.env.local):
-  SUPABASE_URL, SUPABASE_ANON_KEY, SEC_USER_AGENT, MISTRAL_API_KEY
-  Optional: USE_JINA_READER=1 to use Jina AI Reader for HTML→text; JINA_READER_API_KEY for higher limits.
+  SUPABASE_URL, SUPABASE_ANON_KEY, SEC_USER_AGENT, PG_CONN_STRING
+
+Optional env:
+  SKIP_EXISTING=1   Skip filings already in sec_documents (default 1)
 """
 
 import os
-import pathlib
+os.environ["USE_TF"] = "0"
+os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
+
+import sys
 import re
 import time
-from datetime import date
-from typing import Any, Dict, List, Optional, Tuple
+import pathlib
+from typing import Dict, List, Optional, Tuple
 
 import requests
+import numpy as np
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from supabase import create_client, Client
 
-# --- SEC (reuse test_sec_fetch logic) ---
+# --- Path setup ---
+_script_dir = os.path.dirname(os.path.abspath(__file__))
+_project_root = os.path.dirname(_script_dir)
+sys.path.insert(0, _project_root)
+load_dotenv(os.path.join(_project_root, ".env.local"))
+
+# --- Config ---
+SKIP_EXISTING = os.getenv("SKIP_EXISTING", "1").strip().lower() in ("1", "true", "yes")
+
+# Filing limits per ticker
+LIMITS = {
+    "10-K": 1,   # 1 most recent annual report
+    "10-Q": 1,   # 1 most recent quarterly reports
+    "8-K": 1,    # 1 most recent material events
+}
+
+# SEC EDGAR URLs
 SEC_SUBMISSIONS = "https://data.sec.gov/submissions/CIK{cik}.json"
 SEC_ARCHIVES = "https://www.sec.gov/Archives/edgar/data/{cik}/{acc_no}/{primary_doc}"
 SEC_TICKERS = "https://www.sec.gov/files/company_tickers.json"
-FORMS = {"10-K", "10-Q"}
 
-# --- Jina AI Reader (optional HTML→text) ---
-JINA_READER_URL = "https://r.jina.ai/"
-
-# --- Mistral ---
-MISTRAL_EMBED_URL = "https://api.mistral.ai/v1/embeddings"
-MISTRAL_EMBED_MODEL = "mistral-embed"
-EMBED_BATCH_SIZE = 20
+# SEC rate limit: max 10 requests/sec, we stay well under
+SEC_DELAY = 0.15
 
 
-def load_env() -> None:
-    root = pathlib.Path(__file__).resolve().parent.parent
-    env = root / ".env.local"
-    if env.exists():
-        load_dotenv(env)
+# ======================================================================
+# SUPABASE SETUP
+# ======================================================================
 
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_ANON_KEY")
+if not SUPABASE_URL or not SUPABASE_KEY:
+    print("❌ Missing SUPABASE_URL or SUPABASE_ANON_KEY in .env.local")
+    sys.exit(1)
 
-def get_supabase() -> Client:
-    url = os.getenv("SUPABASE_URL")
-    key = os.getenv("SUPABASE_ANON_KEY")
-    if not url or not key:
-        raise RuntimeError("SUPABASE_URL and SUPABASE_ANON_KEY must be set in .env.local")
-    return create_client(url, key)
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 
 def get_sec_user_agent() -> str:
     ua = os.getenv("SEC_USER_AGENT")
     if not ua:
-        raise RuntimeError("SEC_USER_AGENT must be set in .env.local (e.g. 'Name email@example.com')")
+        raise RuntimeError(
+            "SEC_USER_AGENT must be set in .env.local "
+            "(e.g. 'Your Name youremail@example.com')"
+        )
     return ua
 
 
-def get_mistral_key() -> str:
-    key = os.getenv("MISTRAL_API_KEY")
-    if not key:
-        raise RuntimeError("MISTRAL_API_KEY must be set in .env.local for embeddings")
-    return key
+# ======================================================================
+# PART 1: Get all scored tickers and resolve CIKs
+# ======================================================================
+
+def get_all_scored_tickers() -> List[str]:
+    """Fetch ALL tickers from coverage_gap_scores, ordered by gap_score desc."""
+    all_data = []
+    page_size = 1000
+    offset = 0
+    while True:
+        r = (
+            supabase.table("coverage_gap_scores")
+            .select("ticker")
+            .order("gap_score", desc=True)
+            .range(offset, offset + page_size - 1)
+            .execute()
+        )
+        data = r.data or []
+        all_data.extend(data)
+        if len(data) < page_size:
+            break
+        offset += page_size
+    return [row["ticker"] for row in all_data]
 
 
-def top_tickers(supabase: Client, limit: int = 50) -> List[str]:
-    r = (
-        supabase.table("coverage_gap_scores")
-        .select("ticker")
-        .order("gap_score", desc=True)
-        .limit(limit)
-        .execute()
-    )
-    return [row["ticker"] for row in (r.data or [])]
-
-
-def ticker_to_cik(supabase: Client, tickers: List[str], ua: str) -> Dict[str, str]:
+def ticker_to_cik(tickers: List[str], ua: str) -> Dict[str, str]:
     """Resolve ticker -> CIK from SEC company_tickers.json."""
     out: Dict[str, str] = {}
     if not tickers:
         return out
-
+    ticker_set = set(tickers)
     resp = requests.get(SEC_TICKERS, headers={"User-Agent": ua}, timeout=15)
     resp.raise_for_status()
     data = resp.json()
     for entry in data.values():
         t = entry.get("ticker")
-        if t in tickers:
+        if t in ticker_set:
             out[t] = str(entry["cik_str"]).zfill(10)
     return out
 
+
+# ======================================================================
+# PART 2: Fetch filings from SEC EDGAR
+# ======================================================================
 
 def fetch_submissions(cik: str, ua: str) -> dict:
     url = SEC_SUBMISSIONS.format(cik=cik)
@@ -108,6 +142,7 @@ def fetch_submissions(cik: str, ua: str) -> dict:
 
 
 def list_recent_filings(data: dict) -> List[dict]:
+    """Parse all recent filings from SEC submissions response."""
     recent = data.get("filings", {}).get("recent", {})
     forms = recent.get("form", [])
     dates = recent.get("filingDate", [])
@@ -115,8 +150,37 @@ def list_recent_filings(data: dict) -> List[dict]:
     primary_docs = recent.get("primaryDocument", [])
     filings = []
     for form, d, acc, doc in zip(forms, dates, accessions, primary_docs):
-        filings.append({"form": form, "date": d, "accession": acc, "primary_doc": doc})
+        filings.append({
+            "form": form,
+            "date": d,
+            "accession": acc,
+            "primary_doc": doc,
+        })
     return filings
+
+
+def select_filings(filings: List[dict]) -> List[dict]:
+    """
+    From all filings, select:
+      - 1 most recent 10-K
+      - 2 most recent 10-Qs
+      - 3 most recent 8-Ks
+    Filings are already in reverse chronological order from SEC.
+    """
+    selected = []
+    counts = {"10-K": 0, "10-Q": 0, "8-K": 0}
+
+    for f in filings:
+        form = f["form"]
+        if form in counts and counts[form] < LIMITS[form]:
+            selected.append(f)
+            counts[form] += 1
+
+        # Stop early if we have all we need
+        if all(counts[k] >= LIMITS[k] for k in counts):
+            break
+
+    return selected
 
 
 def build_filing_url(cik: str, accession: str, primary_doc: str) -> str:
@@ -126,14 +190,19 @@ def build_filing_url(cik: str, accession: str, primary_doc: str) -> str:
 
 
 def download_filing_html(cik: str, filing: dict, ua: str) -> Tuple[str, str]:
-    """Returns (html_content, source_url)."""
+    """Download filing HTML. Returns (html_content, source_url)."""
     url = build_filing_url(cik, filing["accession"], filing["primary_doc"])
     resp = requests.get(url, headers={"User-Agent": ua}, timeout=60)
     resp.raise_for_status()
     return resp.text, url
 
 
-def _html_to_text_bs4(html: str) -> str:
+# ======================================================================
+# PART 3: HTML to text + section tagging
+# ======================================================================
+
+def html_to_text(html: str) -> str:
+    """Extract plain text from SEC HTML using BeautifulSoup."""
     soup = BeautifulSoup(html, "html.parser")
     for tag in soup(["script", "style"]):
         tag.decompose()
@@ -143,33 +212,72 @@ def _html_to_text_bs4(html: str) -> str:
     return text.strip()
 
 
-def _html_to_text_jina(html: str, api_key: Optional[str] = None) -> str:
-    """Use Jina AI Reader to convert HTML to clean text (LLM-friendly)."""
-    headers = {"Content-Type": "application/json"}
-    if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
-    resp = requests.post(
-        JINA_READER_URL,
-        headers=headers,
-        json={"html": html, "respondWith": "text"},
-        timeout=120,
-    )
-    resp.raise_for_status()
-    data = resp.json()
-    text = (data.get("data") or "").strip()
-    return text
+def tag_section_10k_10q(chunk_text: str) -> str:
+    """Tag a chunk from a 10-K or 10-Q based on section headers in the text."""
+    text_lower = chunk_text.lower()
+
+    if "risk factor" in text_lower:
+        return "risk_factors"
+    elif "management's discussion" in text_lower or "md&a" in text_lower:
+        return "mdna"
+    elif "business" in text_lower and len(text_lower) < 3000:
+        if any(phrase in text_lower for phrase in [
+            "our business", "overview of the business", "description of business",
+            "item 1.", "item 1 ", "business overview"
+        ]):
+            return "business_overview"
+    elif "financial statement" in text_lower or "balance sheet" in text_lower:
+        return "financials"
+    elif "legal proceeding" in text_lower:
+        return "legal"
+
+    return "general"
 
 
-def html_to_text(html: str) -> str:
-    """Extract plain text from SEC HTML. Uses Jina AI Reader if USE_JINA_READER=1 else BeautifulSoup."""
-    use_jina = os.getenv("USE_JINA_READER", "").strip().lower() in ("1", "true", "yes")
-    if use_jina:
-        api_key = os.getenv("JINA_READER_API_KEY") or None
-        return _html_to_text_jina(html, api_key)
-    return _html_to_text_bs4(html)
+def tag_section_8k(chunk_text: str) -> str:
+    """Tag a chunk from an 8-K based on Item numbers."""
+    text_lower = chunk_text.lower()
 
+    if re.search(r"item\s*2\.02", text_lower):
+        return "earnings"
+    elif re.search(r"item\s*5\.02", text_lower):
+        return "leadership_change"
+    elif re.search(r"item\s*1\.01", text_lower):
+        return "material_agreement"
+    elif re.search(r"item\s*1\.02", text_lower):
+        return "bankruptcy"
+    elif re.search(r"item\s*2\.01", text_lower):
+        return "acquisition_disposition"
+    elif re.search(r"item\s*2\.05", text_lower):
+        return "costs_restructuring"
+    elif re.search(r"item\s*2\.06", text_lower):
+        return "material_impairment"
+    elif re.search(r"item\s*5\.01", text_lower):
+        return "corporate_governance"
+    elif re.search(r"item\s*7\.01", text_lower):
+        return "regulation_fd"
+    elif re.search(r"item\s*8\.01", text_lower):
+        return "other_event"
+    elif re.search(r"item\s*9\.01", text_lower):
+        return "financial_exhibit"
+
+    return "general"
+
+
+def tag_section(chunk_text: str, form_type: str) -> str:
+    """Route to the right section tagger based on filing type."""
+    if form_type == "8-K":
+        return tag_section_8k(chunk_text)
+    else:
+        return tag_section_10k_10q(chunk_text)
+
+
+# ======================================================================
+# PART 4: Chunking
+# ======================================================================
 
 def chunk_text(text: str) -> List[str]:
+    """Split text into chunks using LangChain's RecursiveCharacterTextSplitter."""
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=1200,
         chunk_overlap=200,
@@ -179,146 +287,288 @@ def chunk_text(text: str) -> List[str]:
     return splitter.split_text(text)
 
 
-def get_embeddings(texts: List[str], api_key: str) -> List[List[float]]:
-    """Call Mistral embeddings API in batches. Returns list of vectors (1024 dims)."""
-    results: List[List[float]] = []
-    for i in range(0, len(texts), EMBED_BATCH_SIZE):
-        batch = texts[i : i + EMBED_BATCH_SIZE]
-        payload = {"model": MISTRAL_EMBED_MODEL, "input": batch}
-        resp = requests.post(
-            MISTRAL_EMBED_URL,
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json=payload,
-            timeout=60,
+# ======================================================================
+# PART 5: Embedding (local, free)
+# ======================================================================
+
+_embed_model = None
+
+def get_embed_model():
+    """Load embedding model once and cache it."""
+    global _embed_model
+    if _embed_model is None:
+        from sentence_transformers import SentenceTransformer
+        print("Loading embedding model: BAAI/bge-small-en-v1.5 (384 dims)...")
+        _embed_model = SentenceTransformer("BAAI/bge-small-en-v1.5")
+    return _embed_model
+
+
+def embed_chunks(texts: List[str]) -> np.ndarray:
+    """Embed a list of texts locally. Returns numpy array of shape (n, 384)."""
+    model = get_embed_model()
+    embeddings = model.encode(
+        texts,
+        show_progress_bar=False,
+        normalize_embeddings=True,
+        batch_size=64,
+    )
+    return embeddings
+
+
+# ======================================================================
+# PART 6: Tracking (sec_documents table)
+# ======================================================================
+
+def get_existing_filings() -> set:
+    """Get set of (ticker, form_type, filing_date) already ingested."""
+    existing = set()
+    page_size = 1000
+    offset = 0
+    while True:
+        r = (
+            supabase.table("sec_documents")
+            .select("ticker, form_type, filing_date")
+            .range(offset, offset + page_size - 1)
+            .execute()
         )
-        resp.raise_for_status()
-        data = resp.json()
-        # Preserve order by index
-        out = [None] * len(batch)
-        for item in data.get("data", []):
-            idx = item.get("index", len(out) - 1)
-            out[idx] = item["embedding"]
-        results.extend(out)
-        time.sleep(0.2)
-    return results
+        data = r.data or []
+        for row in data:
+            existing.add((row["ticker"], row["form_type"], row["filing_date"]))
+        if len(data) < page_size:
+            break
+        offset += page_size
+    return existing
 
 
-def upsert_document(
-    supabase: Client,
-    ticker: str,
-    form_type: str,
-    filing_date: str,
-    source_url: str,
-    title: Optional[str],
-) -> str:
-    """Upsert sec_documents row; return document id."""
-    row: Dict[str, Any] = {
+def track_document(ticker: str, form_type: str, filing_date: str,
+                   source_url: str, chunk_count: int) -> None:
+    """Upsert a row into sec_documents to track this filing."""
+    row = {
         "ticker": ticker,
         "form_type": form_type,
         "filing_date": filing_date,
         "source_url": source_url,
-        "title": title or f"{ticker} {form_type} {filing_date}",
+        "title": f"{ticker} {form_type} {filing_date}",
+        "chunk_count": chunk_count,
     }
-    r = (
-        supabase.table("sec_documents")
-        .upsert(row, on_conflict="ticker,form_type,filing_date")
-        .select("id")
-        .execute()
-    )
-    if not r.data or len(r.data) == 0:
-        # Fallback: select by natural key
-        r = (
-            supabase.table("sec_documents")
-            .select("id")
-            .eq("ticker", ticker)
-            .eq("form_type", form_type)
-            .eq("filing_date", filing_date)
-            .limit(1)
-            .execute()
+    supabase.table("sec_documents").upsert(
+        row, on_conflict="ticker,form_type,filing_date"
+    ).execute()
+
+
+# ======================================================================
+# PART 7: Write to Haystack document store
+# ======================================================================
+
+def write_filing_chunks(ticker: str, form_type: str, filing_date: str,
+                        chunks: List[str], embeddings: np.ndarray) -> int:
+    """Write chunks for one filing to Haystack document store. Returns count written."""
+    from rag.document_store import get_document_store
+    from haystack import Document
+    from haystack.document_stores.types import DuplicatePolicy
+
+    store = get_document_store()
+
+    documents = []
+    for i, (text, emb) in enumerate(zip(chunks, embeddings)):
+        section = tag_section(text, form_type)
+        doc = Document(
+            content=text,
+            embedding=emb.tolist(),
+            meta={
+                "ticker": ticker,
+                "source_type": "sec_filing",
+                "form_type": form_type,
+                "section": section,
+                "filing_date": filing_date,
+                "chunk_index": i,
+            }
         )
-    return r.data[0]["id"]
+        documents.append(doc)
+
+    store.write_documents(documents, policy=DuplicatePolicy.OVERWRITE)
+    return len(documents)
 
 
-def delete_chunks(supabase: Client, document_id: str) -> None:
-    supabase.table("sec_chunks").delete().eq("document_id", document_id).execute()
-
-
-def insert_chunks(supabase: Client, document_id: str, chunks: List[str], embeddings: List[List[float]]) -> None:
-    if len(chunks) != len(embeddings):
-        raise ValueError("chunks and embeddings length mismatch")
-    rows = [
-        {"document_id": document_id, "chunk_index": i, "content": c, "embedding": e}
-        for i, (c, e) in enumerate(zip(chunks, embeddings))
-    ]
-    supabase.table("sec_chunks").insert(rows).execute()
-
+# ======================================================================
+# PART 8: Main pipeline
+# ======================================================================
 
 def main() -> None:
-    load_env()
-    supabase = get_supabase()
+    start = time.time()
+    print("=" * 60)
+    print("STEP 1: Ingest SEC Filings (10-K, 10-Q, 8-K)")
+    print(f"  All tickers from coverage_gap_scores")
+    print(f"  Per ticker: {LIMITS['10-K']} 10-K, {LIMITS['10-Q']} 10-Q, {LIMITS['8-K']} 8-K")
+    print(f"  Skip existing: {SKIP_EXISTING}")
+    print("=" * 60 + "\n")
+
     ua = get_sec_user_agent()
-    mistral_key = get_mistral_key()
 
-    tickers = top_tickers(supabase, 50)
+    # --- Get all scored tickers ---
+    print("Fetching all tickers from coverage_gap_scores...")
+    tickers = get_all_scored_tickers()
     if not tickers:
-        print("No tickers in coverage_gap_scores. Run pipeline first.")
+        print("❌ No tickers in coverage_gap_scores. Run daily pipeline first.")
         return
-    print(f"Top {len(tickers)} tickers by gap_score: {tickers[:10]}...")
+    print(f"  Got {len(tickers)} tickers\n")
 
-    cik_map = ticker_to_cik(supabase, tickers, ua)
-    for t in tickers:
-        if t not in cik_map:
-            print(f"  Skip {t}: no CIK")
+    # --- Resolve CIKs ---
+    print("Resolving CIKs from SEC...")
+    cik_map = ticker_to_cik(tickers, ua)
+    no_cik = [t for t in tickers if t not in cik_map]
+    if no_cik:
+        print(f"  ⚠️  No CIK for {len(no_cik)} tickers: {no_cik[:10]}...")
     tickers = [t for t in tickers if t in cik_map]
+    print(f"  {len(tickers)} tickers with CIK resolved\n")
+
     if not tickers:
-        print("No tickers with CIK.")
+        print("❌ No tickers with CIK. Exiting.")
         return
 
+    # --- Load existing filings to skip ---
+    existing = set()
+    if SKIP_EXISTING:
+        print("Loading already-ingested filings...")
+        existing = get_existing_filings()
+        print(f"  {len(existing)} filings already in sec_documents\n")
+
+    # --- Load embedding model upfront ---
+    get_embed_model()
+    print()
+
+    # --- Process each ticker ---
     total_docs = 0
     total_chunks = 0
-    for ticker in tickers:
+    total_skipped = 0
+    total_errors = 0
+
+    for idx, ticker in enumerate(tickers):
         cik = cik_map[ticker]
+        print(f"[{idx + 1}/{len(tickers)}] {ticker} (CIK {cik})")
+
+        # Fetch submissions
         try:
             data = fetch_submissions(cik, ua)
-            filings = list_recent_filings(data)
-            sec_filings = [f for f in filings if f["form"] in FORMS][:2]
+            time.sleep(SEC_DELAY)
         except Exception as e:
-            print(f"  {ticker}: submissions error — {e}")
+            print(f"  ❌ submissions error: {e}")
+            total_errors += 1
             continue
 
-        for filing in sec_filings:
+        # Select filings (1 10-K, 2 10-Qs, 3 8-Ks)
+        all_filings = list_recent_filings(data)
+        selected = select_filings(all_filings)
+
+        if not selected:
+            print(f"  No 10-K/10-Q/8-K filings found")
+            continue
+
+        form_summary = {}
+        for f in selected:
+            form_summary[f["form"]] = form_summary.get(f["form"], 0) + 1
+        print(f"  Found: {form_summary}")
+
+        ticker_filed = 0
+        for filing in selected:
             form = filing["form"]
             fd = filing["date"]
+            filing_key = (ticker, form, fd)
+
+            # Skip if already ingested
+            if SKIP_EXISTING and filing_key in existing:
+                total_skipped += 1
+                continue
+
+            # Download HTML
             try:
                 html, source_url = download_filing_html(cik, filing, ua)
+                time.sleep(SEC_DELAY)
             except Exception as e:
-                print(f"  {ticker} {form} {fd}: download error — {e}")
+                print(f"  ❌ {form} {fd}: download error — {e}")
+                total_errors += 1
                 continue
+
+            # HTML → text
             text = html_to_text(html)
-            if len(text) < 500:
-                print(f"  {ticker} {form} {fd}: too little text ({len(text)} chars), skip")
+            if len(text) < 300:
+                print(f"  ⚠️  {form} {fd}: too little text ({len(text)} chars), skip")
+                total_skipped += 1
                 continue
+
+            # Chunk
             chunks = chunk_text(text)
             if not chunks:
+                print(f"  ⚠️  {form} {fd}: no chunks generated, skip")
+                total_skipped += 1
                 continue
-            try:
-                embeddings = get_embeddings(chunks, mistral_key)
-            except Exception as e:
-                print(f"  {ticker} {form} {fd}: embeddings error — {e}")
-                continue
-            try:
-                doc_id = upsert_document(supabase, ticker, form, fd, source_url, None)
-                delete_chunks(supabase, doc_id)
-                insert_chunks(supabase, doc_id, chunks, embeddings)
-            except Exception as e:
-                print(f"  {ticker} {form} {fd}: db error — {e}")
-                continue
-            total_docs += 1
-            total_chunks += len(chunks)
-            print(f"  {ticker} {form} {fd}: {len(chunks)} chunks")
-        time.sleep(0.5)
 
-    print(f"\nDone. Documents: {total_docs}, Chunks: {total_chunks}")
+            # Embed
+            try:
+                embeddings = embed_chunks(chunks)
+            except Exception as e:
+                print(f"  ❌ {form} {fd}: embedding error — {e}")
+                total_errors += 1
+                continue
+
+            # Write to Haystack
+            try:
+                count = write_filing_chunks(ticker, form, fd, chunks, embeddings)
+            except Exception as e:
+                print(f"  ❌ {form} {fd}: document store error — {e}")
+                total_errors += 1
+                continue
+
+            # Track in sec_documents
+            try:
+                track_document(ticker, form, fd, source_url, count)
+            except Exception as e:
+                print(f"  ⚠️  {form} {fd}: tracking error (chunks already written) — {e}")
+
+            total_docs += 1
+            total_chunks += count
+            ticker_filed += 1
+            print(f"  ✅ {form} {fd}: {count} chunks")
+
+        if ticker_filed == 0 and total_skipped > 0:
+            print(f"  (all filings already ingested)")
+
+        # Small pause between tickers to be nice to SEC
+        time.sleep(0.3)
+
+        # Progress update every 50 tickers
+        if (idx + 1) % 50 == 0:
+            elapsed = time.time() - start
+            rate = (idx + 1) / elapsed * 60
+            remaining = (len(tickers) - idx - 1) / rate if rate > 0 else 0
+            print(f"\n  --- Progress: {idx + 1}/{len(tickers)} tickers | "
+                  f"{total_docs} docs | {total_chunks} chunks | "
+                  f"{elapsed:.0f}s elapsed | ~{remaining:.0f}min remaining ---\n")
+
+    # --- Summary ---
+    elapsed = time.time() - start
+    print("\n" + "=" * 60)
+    print("SUMMARY")
+    print("=" * 60)
+    print(f"  Tickers processed: {len(tickers)}")
+    print(f"  Filings ingested:  {total_docs}")
+    print(f"  Chunks written:    {total_chunks}")
+    print(f"  Filings skipped:   {total_skipped} (already ingested)")
+    print(f"  Errors:            {total_errors}")
+    print(f"  Time:              {elapsed:.0f}s ({elapsed/60:.1f}min)")
+    print("=" * 60)
+
+    # --- Final count in document store ---
+    try:
+        from rag.document_store import get_document_store
+        store = get_document_store()
+        final_count = store.count_documents()
+        print(f"\n  Total documents in haystack_documents: {final_count}")
+        print(f"    ({total_chunks} SEC chunks + stock profiles from Step 2)")
+    except Exception:
+        pass
+
+    print(f"\n✅ Done!")
 
 
 if __name__ == "__main__":
