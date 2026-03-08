@@ -21,15 +21,19 @@ import {
   CheckCircle,
   Clock,
   ExternalLink,
+  Brain,
+  Sparkles,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Input } from "@/components/ui/input"
-import { mockHypothesis, formatMarketCap, formatVolume, formatPercent } from "@/lib/mock-data"
+import { formatMarketCap, formatVolume, formatPercent } from "@/lib/mock-data"
 import { sendChatMessage, sendChatMessageStream } from "@/lib/rag-chat"
+import { getAnalysis, generateAnalysis, type AnalysisData } from "@/lib/analysis-api"
 import { ChatBubble, ThinkingBubble } from "@/components/chat-bubble"
+import { DebateTranscript } from "@/components/debate-transcript"
 import {
   LineChart,
   Line,
@@ -129,6 +133,11 @@ export default function StockDetailPage({ params }: { params: Promise<{ ticker: 
   const [volumeHistory, setVolumeHistory] = useState<Array<{ date: string; volume: number }>>([])
   const [volumeHistoryLoading, setVolumeHistoryLoading] = useState(false)
 
+  // AI Analysis state
+  const [analysis, setAnalysis] = useState<AnalysisData | null>(null)
+  const [analysisLoading, setAnalysisLoading] = useState(false)
+  const [analysisError, setAnalysisError] = useState<string | null>(null)
+
   // Auto-scroll chat to bottom
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -180,6 +189,39 @@ export default function StockDetailPage({ params }: { params: Promise<{ ticker: 
       .catch(() => setVolumeHistory([]))
       .finally(() => setVolumeHistoryLoading(false))
   }, [ticker])
+
+  // Fetch AI analysis when the analysis tab is selected
+  useEffect(() => {
+    if (activeTab === "analysis" && ticker && !analysis && !analysisLoading) {
+      fetchAnalysis()
+    }
+  }, [activeTab, ticker])
+
+  const fetchAnalysis = async () => {
+    setAnalysisLoading(true)
+    setAnalysisError(null)
+    try {
+      const cached = await getAnalysis(ticker)
+      setAnalysis(cached)
+    } catch (err) {
+      console.error("Failed to fetch analysis:", err)
+    } finally {
+      setAnalysisLoading(false)
+    }
+  }
+
+  const handleGenerateAnalysis = async (force = false) => {
+    setAnalysisLoading(true)
+    setAnalysisError(null)
+    try {
+      const result = await generateAnalysis(ticker, force)
+      setAnalysis(result)
+    } catch (err) {
+      setAnalysisError(err instanceof Error ? err.message : "Analysis generation failed")
+    } finally {
+      setAnalysisLoading(false)
+    }
+  }
 
   if (loading) return (<div className="container mx-auto px-4 py-8"><h1 className="text-2xl font-bold">Loading {ticker}…</h1><div className="flex items-center justify-center py-24 text-muted-foreground">Loading…</div></div>)
   if (error) return (<div className="container mx-auto px-4 py-8"><div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-destructive">{error}</div><Button asChild className="mt-4"><Link href="/opportunities">Back to Opportunities</Link></Button></div>)
@@ -260,7 +302,13 @@ export default function StockDetailPage({ params }: { params: Promise<{ ticker: 
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" className="gap-2 bg-transparent"><Star className="h-4 w-4" />Add to Watchlist</Button>
-          <Button className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90"><RefreshCw className="h-4 w-4" />Generate Analysis</Button>
+          <Button
+            className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
+            onClick={() => { setActiveTab("analysis"); handleGenerateAnalysis(false) }}
+            disabled={analysisLoading}
+          >
+            <Sparkles className="h-4 w-4" />Generate Analysis
+          </Button>
           <Button variant="outline" size="icon"><Download className="h-4 w-4" /></Button>
         </div>
       </div>
@@ -349,17 +397,244 @@ export default function StockDetailPage({ params }: { params: Promise<{ ticker: 
 
         {/* AI Analysis Tab */}
         <TabsContent value="analysis" className="space-y-6">
-          <Card><CardHeader className="flex flex-row items-center justify-between"><div><CardTitle>Investment Hypothesis</CardTitle><p className="text-sm text-muted-foreground mt-1">AI-generated analysis based on coverage gap and market data</p></div><div className="flex items-center gap-2"><span className="text-sm text-muted-foreground">Confidence:</span><Badge variant="secondary" className="font-mono">{mockHypothesis.confidence}%</Badge></div></CardHeader><CardContent><p className="text-muted-foreground leading-relaxed">{mockHypothesis.hypothesis}</p></CardContent></Card>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <CollapsibleCard title="Bull Case" variant="bull"><ul className="space-y-2">{mockHypothesis.bullCase.points.map((point, i) => (<li key={i} className="flex gap-2 text-sm"><CheckCircle className="h-4 w-4 text-success flex-shrink-0 mt-0.5" /><span>{point}</span></li>))}</ul></CollapsibleCard>
-            <CollapsibleCard title="Base Case" variant="base"><ul className="space-y-2">{mockHypothesis.baseCase.points.map((point, i) => (<li key={i} className="flex gap-2 text-sm"><Activity className="h-4 w-4 text-primary flex-shrink-0 mt-0.5" /><span>{point}</span></li>))}</ul></CollapsibleCard>
-            <CollapsibleCard title="Bear Case" variant="bear"><ul className="space-y-2">{mockHypothesis.bearCase.points.map((point, i) => (<li key={i} className="flex gap-2 text-sm"><AlertTriangle className="h-4 w-4 text-destructive flex-shrink-0 mt-0.5" /><span>{point}</span></li>))}</ul></CollapsibleCard>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <Card><CardHeader><CardTitle>Upcoming Catalysts</CardTitle></CardHeader><CardContent><div className="space-y-4">{mockHypothesis.catalysts.map((catalyst, i) => (<div key={i} className="flex items-center gap-3"><div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center"><Clock className="h-4 w-4 text-primary" /></div><div><p className="font-medium text-sm">{catalyst.event}</p><p className="text-xs text-muted-foreground">{catalyst.date}</p></div></div>))}</div></CardContent></Card>
-            <Card><CardHeader><CardTitle>Key Risks</CardTitle></CardHeader><CardContent><div className="space-y-3">{mockHypothesis.risks.map((risk, i) => (<div key={i} className="flex items-center justify-between"><span className="text-sm">{risk.risk}</span><Badge variant="outline" className={risk.severity === "high" ? "border-destructive/50 text-destructive" : risk.severity === "medium" ? "border-warning/50 text-warning" : "border-muted-foreground/50 text-muted-foreground"}>{risk.severity}</Badge></div>))}</div></CardContent></Card>
-          </div>
-          <div className="flex justify-center"><Button className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90"><RefreshCw className="h-4 w-4" />Regenerate Analysis</Button></div>
+          {/* Loading state — fetching cached or generating */}
+          {analysisLoading && !analysis && (
+            <div className="flex flex-col items-center justify-center py-16 space-y-4">
+              <div className="relative">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary" />
+                <Brain className="h-5 w-5 text-primary absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+              </div>
+              <p className="text-sm font-medium">AI agents are analyzing {ticker}...</p>
+              <p className="text-xs text-muted-foreground">5 specialized agents debating — this takes 15-30 seconds</p>
+            </div>
+          )}
+
+          {/* No analysis exists — show generate button */}
+          {!analysisLoading && !analysis && (
+            <div className="flex flex-col items-center justify-center py-16 space-y-4">
+              <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center">
+                <Brain className="h-8 w-8 text-primary/50" />
+              </div>
+              <h3 className="text-lg font-semibold">No AI Analysis Yet</h3>
+              <p className="text-sm text-muted-foreground text-center max-w-md">
+                Generate an investment hypothesis using our multi-agent AI system.
+                5 specialized agents will analyze market data, coverage gaps, SEC filings,
+                and recent news to build a comprehensive thesis.
+              </p>
+              <Button onClick={() => handleGenerateAnalysis(false)} className="gap-2">
+                <Sparkles className="h-4 w-4" />
+                Generate Analysis
+              </Button>
+              {analysisError && (
+                <p className="text-sm text-destructive text-center max-w-md">{analysisError}</p>
+              )}
+            </div>
+          )}
+
+          {/* Analysis exists — render everything */}
+          {analysis && (() => {
+            // Detect if this is a partial analysis (quick hypothesis only) or full
+            const isPartial = !analysis.bullCase?.points?.length && !analysis.bearCase?.points?.length
+
+            return (
+              <>
+                {/* Stale analysis banner */}
+                {analysis.isStale && (
+                  <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 flex items-center justify-between">
+                    <p className="text-sm text-amber-400">
+                      This analysis may be outdated — gap score or data has changed since generation.
+                    </p>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleGenerateAnalysis(true)}
+                      disabled={analysisLoading}
+                      className="gap-1 ml-4 flex-shrink-0"
+                    >
+                      <RefreshCw className="h-3 w-3" />
+                      Refresh
+                    </Button>
+                  </div>
+                )}
+
+                {/* Investment Hypothesis */}
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between">
+                    <div>
+                      <CardTitle>Investment Hypothesis</CardTitle>
+                      <p className="text-sm text-muted-foreground mt-1">AI-generated analysis based on coverage gap and market data</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-muted-foreground">Confidence:</span>
+                      <Badge
+                        variant="secondary"
+                        className={`font-mono ${analysis.confidence >= 75 ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" :
+                            analysis.confidence >= 50 ? "bg-amber-500/20 text-amber-400 border-amber-500/30" :
+                              "bg-red-500/20 text-red-400 border-red-500/30"
+                          }`}
+                      >
+                        {Math.round(analysis.confidence)}%
+                      </Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-muted-foreground leading-relaxed">{analysis.hypothesis}</p>
+                  </CardContent>
+                </Card>
+
+                {/* PARTIAL ANALYSIS — show unlock CTA */}
+                {isPartial && (
+                  <Card className="border-primary/30 bg-primary/5">
+                    <CardContent className="pt-6">
+                      <div className="flex flex-col items-center text-center space-y-4 py-4">
+                        <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
+                          <Sparkles className="h-6 w-6 text-primary" />
+                        </div>
+                        <div>
+                          <h3 className="text-lg font-semibold mb-1">Unlock Full Analysis</h3>
+                          <p className="text-sm text-muted-foreground max-w-lg">
+                            Want Bull, Base &amp; Bear cases, upcoming catalysts, key risks, and the full AI agent debate?
+                            Generate the complete analysis powered by 5 specialized AI agents.
+                          </p>
+                        </div>
+                        <Button
+                          onClick={() => handleGenerateAnalysis(true)}
+                          disabled={analysisLoading}
+                          className="gap-2"
+                        >
+                          {analysisLoading ? (
+                            <>
+                              <div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                              Generating Full Analysis...
+                            </>
+                          ) : (
+                            <>
+                              <Sparkles className="h-4 w-4" />
+                              Generate Full Analysis
+                            </>
+                          )}
+                        </Button>
+                        <p className="text-xs text-muted-foreground">Takes 15-30 seconds · 5 AI agents analyze in sequence</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* FULL ANALYSIS — show everything */}
+                {!isPartial && (
+                  <>
+                    {/* Bull / Base / Bear Cases */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      <CollapsibleCard title={analysis.bullCase.title || "Bull Case"} variant="bull">
+                        <ul className="space-y-2">
+                          {analysis.bullCase.points.map((point, i) => (
+                            <li key={i} className="flex gap-2 text-sm">
+                              <CheckCircle className="h-4 w-4 text-success flex-shrink-0 mt-0.5" />
+                              <span>{point}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </CollapsibleCard>
+                      <CollapsibleCard title={analysis.baseCase.title || "Base Case"} variant="base">
+                        <ul className="space-y-2">
+                          {analysis.baseCase.points.map((point, i) => (
+                            <li key={i} className="flex gap-2 text-sm">
+                              <Activity className="h-4 w-4 text-primary flex-shrink-0 mt-0.5" />
+                              <span>{point}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </CollapsibleCard>
+                      <CollapsibleCard title={analysis.bearCase.title || "Bear Case"} variant="bear">
+                        <ul className="space-y-2">
+                          {analysis.bearCase.points.map((point, i) => (
+                            <li key={i} className="flex gap-2 text-sm">
+                              <AlertTriangle className="h-4 w-4 text-destructive flex-shrink-0 mt-0.5" />
+                              <span>{point}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </CollapsibleCard>
+                    </div>
+
+                    {/* Catalysts & Risks */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <Card>
+                        <CardHeader><CardTitle>Upcoming Catalysts</CardTitle></CardHeader>
+                        <CardContent>
+                          <div className="space-y-4">
+                            {analysis.catalysts.map((catalyst, i) => (
+                              <div key={i} className="flex items-center gap-3">
+                                <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
+                                  <Clock className="h-4 w-4 text-primary" />
+                                </div>
+                                <div>
+                                  <p className="font-medium text-sm">{catalyst.event}</p>
+                                  <p className="text-xs text-muted-foreground">{catalyst.date}</p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </CardContent>
+                      </Card>
+                      <Card>
+                        <CardHeader><CardTitle>Key Risks</CardTitle></CardHeader>
+                        <CardContent>
+                          <div className="space-y-3">
+                            {analysis.risks.map((risk, i) => (
+                              <div key={i} className="flex items-center justify-between">
+                                <span className="text-sm">{risk.risk}</span>
+                                <Badge
+                                  variant="outline"
+                                  className={
+                                    risk.severity === "high" ? "border-destructive/50 text-destructive" :
+                                      risk.severity === "medium" ? "border-warning/50 text-warning" :
+                                        "border-muted-foreground/50 text-muted-foreground"
+                                  }
+                                >
+                                  {risk.severity}
+                                </Badge>
+                              </div>
+                            ))}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </div>
+
+                    {/* Debate Transcript */}
+                    <DebateTranscript
+                      steps={analysis.debateTranscript}
+                      newsContext={analysis.newsContext}
+                      generatedAt={analysis.generatedAt}
+                      modelUsed={analysis.modelUsed}
+                    />
+
+                    {/* Regenerate Analysis button */}
+                    <div className="flex justify-center">
+                      <Button
+                        variant="outline"
+                        onClick={() => handleGenerateAnalysis(true)}
+                        disabled={analysisLoading}
+                        className="gap-2"
+                      >
+                        {analysisLoading ? (
+                          <>
+                            <div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                            Regenerating...
+                          </>
+                        ) : (
+                          <>
+                            <RefreshCw className="h-4 w-4" />
+                            Regenerate Analysis
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </>
+                )}
+              </>
+            )
+          })()}
         </TabsContent>
 
         {/* News Tab */}
