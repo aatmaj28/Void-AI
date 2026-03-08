@@ -24,6 +24,8 @@ os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
 
 import sys
 import time
+import re
+import json
 import requests
 import pandas as pd
 import numpy as np
@@ -50,6 +52,9 @@ if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_ANON_KEY")
 PG_CONN_STRING = os.getenv("PG_CONN_STRING")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY", "")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "mistralai/mistral-medium-3.1")
 
 if not SUPABASE_URL or not SUPABASE_KEY:
     print("❌ Missing SUPABASE_URL or SUPABASE_ANON_KEY in .env.local")
@@ -76,6 +81,10 @@ W_COVERAGE = 0.50
 W_ACTIVITY = 0.30
 W_QUALITY = 0.20
 MOMENTUM_LOOKBACK_DAYS = 30
+
+# Quick hypothesis config
+QUICK_HYPOTHESIS_TOP_N = 10
+OPENROUTER_CHAT_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 # ---------- yfinance cache ----------
 _yf_cache = os.path.join(_project_root, ".yfinance_cache")
@@ -531,6 +540,223 @@ def run_stock_profile_generation():
     print(f"✅ Profiles generated in {time.time()-start:.0f}s\n")
 
 
+# ===================== QUICK HYPOTHESIS GENERATION (for Top Opportunities) =====================
+
+QUICK_HYPOTHESIS_SYSTEM_PROMPT = """You are a senior equity analyst at Void AI, a platform that identifies under-covered stocks with high market activity.
+
+Given a stock's data, produce a concise investment hypothesis and confidence score.
+
+You MUST respond with ONLY valid JSON (no markdown, no code fences, no preamble):
+{
+  "hypothesis": "2-4 sentence investment thesis explaining why this stock's coverage gap matters and what the opportunity/risk is. Be specific with numbers.",
+  "confidence": <integer 0-100>
+}
+
+Rules:
+- The hypothesis must reference the specific coverage gap (analyst count vs peers)
+- Include at least one quantitative data point (price, volume, gap score, etc.)
+- Confidence should reflect data quality and the strength of the coverage gap signal
+- Keep it concise but insightful — this is a preview, not a full analysis
+- Do NOT use markdown formatting (no ** or ### or ---)"""
+
+
+def _fetch_finnhub_news_for_hypothesis(ticker, limit=3):
+    """Fetch a few recent news headlines for hypothesis context."""
+    if not FINNHUB_API_KEY:
+        return []
+    try:
+        today = datetime.utcnow()
+        r = requests.get(
+            "https://finnhub.io/api/v1/company-news",
+            params={
+                "symbol": ticker,
+                "from": (today - timedelta(days=14)).strftime("%Y-%m-%d"),
+                "to": today.strftime("%Y-%m-%d"),
+                "token": FINNHUB_API_KEY,
+            },
+            timeout=8,
+        )
+        if r.ok:
+            articles = r.json()
+            if isinstance(articles, list):
+                articles.sort(key=lambda x: x.get("datetime", 0), reverse=True)
+                return [
+                    {"headline": a.get("headline", ""), "source": a.get("source", ""),
+                     "datetime": datetime.fromtimestamp(a.get("datetime", 0)).strftime("%Y-%m-%d") if a.get("datetime") else ""}
+                    for a in articles[:limit]
+                ]
+    except Exception:
+        pass
+    return []
+
+
+def _call_llm_quick_hypothesis(ticker, context):
+    """Single LLM call to generate hypothesis + confidence."""
+    name = context.get("company", {}).get("name", ticker)
+    news_str = ""
+    if context.get("news"):
+        news_str = "\n\nRECENT NEWS:\n" + "\n".join(
+            f"- {n['headline']} ({n['source']}, {n['datetime']})" for n in context["news"]
+        )
+
+    user_prompt = f"""Generate an investment hypothesis for {name} ({ticker}).
+
+COMPANY: {json.dumps(context.get('company', {}), default=str)}
+METRICS: {json.dumps(context.get('metrics', {}), default=str)}
+COVERAGE: {json.dumps(context.get('coverage', {}), default=str)}
+SCORES: {json.dumps(context.get('scores', {}), default=str)}{news_str}
+
+Remember: Output ONLY valid JSON with "hypothesis" and "confidence" keys. No markdown."""
+
+    try:
+        response = requests.post(
+            OPENROUTER_CHAT_URL,
+            headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}", "Content-Type": "application/json"},
+            json={
+                "model": OPENROUTER_MODEL,
+                "messages": [
+                    {"role": "system", "content": QUICK_HYPOTHESIS_SYSTEM_PROMPT},
+                    {"role": "user", "content": user_prompt},
+                ],
+                "max_tokens": 500,
+                "temperature": 0.7,
+            },
+            timeout=30,
+        )
+        response.raise_for_status()
+        raw = response.json()["choices"][0]["message"]["content"].strip()
+
+        # Strip markdown fences if present
+        if raw.startswith("```"):
+            lines = raw.split("\n")[1:]
+            if lines and lines[-1].strip() == "```":
+                lines = lines[:-1]
+            raw = "\n".join(lines).strip()
+
+        result = json.loads(raw)
+        if "hypothesis" not in result or "confidence" not in result:
+            raise ValueError("Missing fields")
+
+        result["hypothesis"] = re.sub(r'\*\*([^*]+)\*\*', r'\1', result["hypothesis"])
+        result["confidence"] = int(float(result["confidence"]))
+        return result
+    except Exception as e:
+        print(f"    ⚠️ LLM call failed for {ticker}: {e}")
+        return None
+
+
+def run_quick_hypothesis_generation():
+    """Generate lightweight hypotheses for top opportunities. Runs after scoring engine."""
+    if not OPENROUTER_API_KEY:
+        print("  ⚠️ OPENROUTER_API_KEY not set — skipping quick hypothesis generation.")
+        return
+
+    print(f"\n{'=' * 60}")
+    print(f"QUICK HYPOTHESIS GENERATION (Top {QUICK_HYPOTHESIS_TOP_N} Opportunities)")
+    print(f"{'=' * 60}\n")
+
+    # Get top N opportunities
+    print("  Fetching top opportunities by gap_score...")
+    try:
+        res = supabase.table("coverage_gap_scores") \
+            .select("ticker, gap_score, confidence, opportunity_type, coverage_score, activity_score, quality_score") \
+            .gte("gap_score", 60) \
+            .order("gap_score", desc=True) \
+            .limit(QUICK_HYPOTHESIS_TOP_N) \
+            .execute()
+        top_opps = res.data or []
+    except Exception as e:
+        print(f"  ❌ Failed to fetch opportunities: {e}")
+        return
+
+    if not top_opps:
+        print("  No opportunities with gap_score >= 60. Skipping.")
+        return
+
+    print(f"  Found {len(top_opps)} top opportunities\n")
+    generated, skipped = 0, 0
+
+    for opp in top_opps:
+        ticker = opp["ticker"]
+        gap_score = opp["gap_score"]
+
+        # Check if fresh analysis already exists
+        try:
+            existing = supabase.table("ai_analyses") \
+                .select("generated_at, bull_case, gap_score_at_generation") \
+                .eq("ticker", ticker).limit(1).execute()
+
+            if existing.data:
+                record = existing.data[0]
+                has_full = record.get("bull_case") is not None
+                gen_time = record.get("generated_at", "")
+                try:
+                    gen_dt = datetime.fromisoformat(gen_time.replace("Z", "+00:00").replace("+00:00", ""))
+                    age_days = (datetime.utcnow() - gen_dt).days
+                except Exception:
+                    age_days = 999
+
+                if has_full and age_days < 7:
+                    skipped += 1
+                    continue
+                elif not has_full and age_days < 1:
+                    skipped += 1
+                    continue
+        except Exception:
+            pass
+
+        # Gather minimal context
+        try:
+            company = supabase.table("companies").select("ticker, name, sector, industry, market_cap, cap_type").eq("ticker", ticker).limit(1).execute()
+            metrics = supabase.table("stock_metrics").select("current_price, avg_volume_20d, volatility_20d, price_change_1m, price_change_3m, year_high, year_low, pe_ratio").eq("ticker", ticker).limit(1).execute()
+            coverage = supabase.table("analyst_coverage").select("analyst_count, recommendation_key, target_mean_price").eq("ticker", ticker).limit(1).execute()
+
+            context = {
+                "company": company.data[0] if company.data else {},
+                "metrics": metrics.data[0] if metrics.data else {},
+                "coverage": coverage.data[0] if coverage.data else {},
+                "scores": opp,
+                "news": _fetch_finnhub_news_for_hypothesis(ticker),
+            }
+        except Exception as e:
+            print(f"    ⚠️ Context fetch failed for {ticker}: {e}")
+            continue
+
+        # Generate hypothesis
+        result = _call_llm_quick_hypothesis(ticker, context)
+        if not result:
+            continue
+
+        # Upsert partial analysis
+        try:
+            record = {
+                "ticker": ticker,
+                "hypothesis": result["hypothesis"],
+                "confidence": result["confidence"],
+                "bull_case": None,
+                "base_case": None,
+                "bear_case": None,
+                "catalysts": None,
+                "risks": None,
+                "debate_transcript": None,
+                "news_context": context.get("news", []),
+                "model_used": OPENROUTER_MODEL,
+                "generated_at": datetime.utcnow().isoformat(),
+                "expires_at": (datetime.utcnow() + timedelta(days=1)).isoformat(),
+                "gap_score_at_generation": float(gap_score) if gap_score else None,
+            }
+            supabase.table("ai_analyses").upsert(record, on_conflict="ticker").execute()
+            generated += 1
+            print(f"    ✅ {ticker} (gap: {gap_score}) — confidence: {result['confidence']}%")
+        except Exception as e:
+            print(f"    ⚠️ Failed to cache {ticker}: {e}")
+
+        time.sleep(1)
+
+    print(f"\n  Summary: {generated} generated, {skipped} skipped (fresh analysis exists)")
+    print(f"  {'=' * 60}\n")
+
+
 # ===================== MAIN PIPELINE =====================
 
 def main():
@@ -603,6 +829,15 @@ def main():
     except Exception as e:
         print(f"⚠️ Profile generation failed: {e}")
         print("  (Pipeline data is saved — profiles can be regenerated later)")
+
+    # Generate quick hypotheses for top opportunities
+    print("\n" + "=" * 60 + "\nGenerating quick hypotheses for top opportunities...\n" + "=" * 60)
+    try:
+        run_quick_hypothesis_generation()
+        print("✅ Quick hypotheses generated!")
+    except Exception as e:
+        print(f"⚠️ Quick hypothesis generation failed: {e}")
+        print("  (All other pipeline data is saved — hypotheses can be generated on-demand)")
 
     print(f"\n✅ Daily pipeline complete!")
 
