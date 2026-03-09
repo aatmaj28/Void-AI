@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """
-Step 1: Ingest SEC 10-K, 10-Q, and 8-K filings into Haystack document store.
+Step 1: Ingest SEC 10-K filings into Haystack document store.
 
 For ALL tickers in coverage_gap_scores:
-  - 1 most recent 10-K  (annual report)
-  - 2 most recent 10-Qs (quarterly reports)
-  - 3 most recent 8-Ks  (material events)
+  - 1 most recent 10-K (annual report)
+  - Max 15 chunks per filing (keeps important sections, drops noise)
 
 Downloads HTML from SEC EDGAR, extracts text, tags sections,
 chunks, embeds with BAAI/bge-small-en-v1.5 (local, free),
@@ -13,6 +12,8 @@ and writes to Haystack's PgvectorDocumentStore.
 
 Tracks ingested filings in `sec_documents` table to avoid re-processing.
 Safe to stop (Ctrl+C) and re-run — skips already-ingested filings.
+
+Expected storage: ~1,700 tickers × 15 chunks × ~5KB = ~125 MB
 
 Usage:
   python scripts/ingest_sec_filings.py
@@ -50,12 +51,13 @@ load_dotenv(os.path.join(_project_root, ".env.local"))
 # --- Config ---
 SKIP_EXISTING = os.getenv("SKIP_EXISTING", "1").strip().lower() in ("1", "true", "yes")
 
-# Filing limits per ticker
+# Filing limits per ticker — 10-K only
 LIMITS = {
-    "10-K": 1,   # 1 most recent annual report
-    "10-Q": 1,   # 1 most recent quarterly reports
-    "8-K": 1,    # 1 most recent material events
+    "10-K": 1,
 }
+
+# Max chunks to keep per filing (first 15 cover Business, Risk Factors, MD&A)
+MAX_CHUNKS_PER_FILING = 15
 
 # SEC EDGAR URLs
 SEC_SUBMISSIONS = "https://data.sec.gov/submissions/CIK{cik}.json"
@@ -161,14 +163,11 @@ def list_recent_filings(data: dict) -> List[dict]:
 
 def select_filings(filings: List[dict]) -> List[dict]:
     """
-    From all filings, select:
-      - 1 most recent 10-K
-      - 2 most recent 10-Qs
-      - 3 most recent 8-Ks
+    From all filings, select the most recent 10-K only.
     Filings are already in reverse chronological order from SEC.
     """
     selected = []
-    counts = {"10-K": 0, "10-Q": 0, "8-K": 0}
+    counts = {"10-K": 0}
 
     for f in filings:
         form = f["form"]
@@ -176,7 +175,6 @@ def select_filings(filings: List[dict]) -> List[dict]:
             selected.append(f)
             counts[form] += 1
 
-        # Stop early if we have all we need
         if all(counts[k] >= LIMITS[k] for k in counts):
             break
 
@@ -212,8 +210,8 @@ def html_to_text(html: str) -> str:
     return text.strip()
 
 
-def tag_section_10k_10q(chunk_text: str) -> str:
-    """Tag a chunk from a 10-K or 10-Q based on section headers in the text."""
+def tag_section_10k(chunk_text: str) -> str:
+    """Tag a chunk from a 10-K based on section headers in the text."""
     text_lower = chunk_text.lower()
 
     if "risk factor" in text_lower:
@@ -232,44 +230,6 @@ def tag_section_10k_10q(chunk_text: str) -> str:
         return "legal"
 
     return "general"
-
-
-def tag_section_8k(chunk_text: str) -> str:
-    """Tag a chunk from an 8-K based on Item numbers."""
-    text_lower = chunk_text.lower()
-
-    if re.search(r"item\s*2\.02", text_lower):
-        return "earnings"
-    elif re.search(r"item\s*5\.02", text_lower):
-        return "leadership_change"
-    elif re.search(r"item\s*1\.01", text_lower):
-        return "material_agreement"
-    elif re.search(r"item\s*1\.02", text_lower):
-        return "bankruptcy"
-    elif re.search(r"item\s*2\.01", text_lower):
-        return "acquisition_disposition"
-    elif re.search(r"item\s*2\.05", text_lower):
-        return "costs_restructuring"
-    elif re.search(r"item\s*2\.06", text_lower):
-        return "material_impairment"
-    elif re.search(r"item\s*5\.01", text_lower):
-        return "corporate_governance"
-    elif re.search(r"item\s*7\.01", text_lower):
-        return "regulation_fd"
-    elif re.search(r"item\s*8\.01", text_lower):
-        return "other_event"
-    elif re.search(r"item\s*9\.01", text_lower):
-        return "financial_exhibit"
-
-    return "general"
-
-
-def tag_section(chunk_text: str, form_type: str) -> str:
-    """Route to the right section tagger based on filing type."""
-    if form_type == "8-K":
-        return tag_section_8k(chunk_text)
-    else:
-        return tag_section_10k_10q(chunk_text)
 
 
 # ======================================================================
@@ -371,7 +331,7 @@ def write_filing_chunks(ticker: str, form_type: str, filing_date: str,
 
     documents = []
     for i, (text, emb) in enumerate(zip(chunks, embeddings)):
-        section = tag_section(text, form_type)
+        section = tag_section_10k(text)
         doc = Document(
             content=text,
             embedding=emb.tolist(),
@@ -397,9 +357,9 @@ def write_filing_chunks(ticker: str, form_type: str, filing_date: str,
 def main() -> None:
     start = time.time()
     print("=" * 60)
-    print("STEP 1: Ingest SEC Filings (10-K, 10-Q, 8-K)")
+    print("STEP 1: Ingest SEC 10-K Filings")
     print(f"  All tickers from coverage_gap_scores")
-    print(f"  Per ticker: {LIMITS['10-K']} 10-K, {LIMITS['10-Q']} 10-Q, {LIMITS['8-K']} 8-K")
+    print(f"  Per ticker: {LIMITS['10-K']} 10-K only (max {MAX_CHUNKS_PER_FILING} chunks)")
     print(f"  Skip existing: {SKIP_EXISTING}")
     print("=" * 60 + "\n")
 
@@ -456,18 +416,15 @@ def main() -> None:
             total_errors += 1
             continue
 
-        # Select filings (1 10-K, 2 10-Qs, 3 8-Ks)
+        # Select filings (1 10-K only)
         all_filings = list_recent_filings(data)
         selected = select_filings(all_filings)
 
         if not selected:
-            print(f"  No 10-K/10-Q/8-K filings found")
+            print(f"  No 10-K filing found")
             continue
 
-        form_summary = {}
-        for f in selected:
-            form_summary[f["form"]] = form_summary.get(f["form"], 0) + 1
-        print(f"  Found: {form_summary}")
+        print(f"  Found: 10-K")
 
         ticker_filed = 0
         for filing in selected:
@@ -496,8 +453,8 @@ def main() -> None:
                 total_skipped += 1
                 continue
 
-            # Chunk
-            chunks = chunk_text(text)
+            # Chunk (capped to keep storage manageable)
+            chunks = chunk_text(text)[:MAX_CHUNKS_PER_FILING]
             if not chunks:
                 print(f"  ⚠️  {form} {fd}: no chunks generated, skip")
                 total_skipped += 1
@@ -528,10 +485,10 @@ def main() -> None:
             total_docs += 1
             total_chunks += count
             ticker_filed += 1
-            print(f"  ✅ {form} {fd}: {count} chunks")
+            print(f"  ✅ 10-K {fd}: {count} chunks (capped at {MAX_CHUNKS_PER_FILING})")
 
         if ticker_filed == 0 and total_skipped > 0:
-            print(f"  (all filings already ingested)")
+            print(f"  (already ingested)")
 
         # Small pause between tickers to be nice to SEC
         time.sleep(0.3)
@@ -551,8 +508,8 @@ def main() -> None:
     print("SUMMARY")
     print("=" * 60)
     print(f"  Tickers processed: {len(tickers)}")
-    print(f"  Filings ingested:  {total_docs}")
-    print(f"  Chunks written:    {total_chunks}")
+    print(f"  10-K filings ingested: {total_docs}")
+    print(f"  Chunks written:    {total_chunks} (max {MAX_CHUNKS_PER_FILING} per filing)")
     print(f"  Filings skipped:   {total_skipped} (already ingested)")
     print(f"  Errors:            {total_errors}")
     print(f"  Time:              {elapsed:.0f}s ({elapsed/60:.1f}min)")
@@ -564,7 +521,7 @@ def main() -> None:
         store = get_document_store()
         final_count = store.count_documents()
         print(f"\n  Total documents in haystack_documents: {final_count}")
-        print(f"    ({total_chunks} SEC chunks + stock profiles from Step 2)")
+        print(f"    ({total_chunks} SEC chunks + stock profiles)")
     except Exception:
         pass
 
