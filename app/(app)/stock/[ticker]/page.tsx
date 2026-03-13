@@ -665,7 +665,7 @@ export default function StockDetailPage({ params }: { params: Promise<{ ticker: 
 
               <div className="flex flex-wrap gap-2 mb-4">
                 {["Why is this stock under-covered?", "What are the main risks?", "Compare to sector peers"].map((question) => (
-                  <Button key={question} variant="outline" size="sm" onClick={() => setChatInput(question)} className="text-xs">{question}</Button>
+                  <Button key={question} variant="ghost" size="sm" onClick={() => setChatInput(question)} className="text-xs border border-primary/40 bg-primary/15 text-foreground hover:bg-primary/25 hover:border-primary/60">{question}</Button>
                 ))}
               </div>
 
