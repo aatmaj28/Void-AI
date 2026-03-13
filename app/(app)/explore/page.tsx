@@ -229,9 +229,9 @@ export default function ExplorePage() {
                       onClick={() => {
                         setSelectedTicker(o.ticker)
                       }}
-                      className={`w-full text-left px-3 py-2 rounded-md border text-sm transition-colors ${isActive
-                        ? "border-primary/40 bg-primary/10"
-                        : "border-border/60 hover:bg-secondary/60"
+                      className={`w-full text-left px-3 py-2.5 rounded-lg border text-sm transition-colors ${isActive
+                        ? "border-primary/60 bg-primary/15 shadow-sm shadow-primary/10"
+                        : "border-border/50 bg-white/[0.04] hover:bg-white/[0.08] hover:border-border/80"
                         }`}
                     >
                       <div className="flex items-center justify-between gap-2">
@@ -368,9 +368,9 @@ export default function ExplorePage() {
               ).map((q) => (
                 <Button
                   key={q}
-                  variant="outline"
+                  variant="ghost"
                   size="sm"
-                  className="text-xs"
+                  className="text-xs border border-primary/40 bg-primary/15 text-foreground hover:bg-primary/25 hover:border-primary/60"
                   onClick={() => setInput(q)}
                 >
                   {q}
