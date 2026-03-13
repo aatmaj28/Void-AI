@@ -280,28 +280,38 @@ export default function ExplorePage() {
               </p>
             </div>
             <div className="flex flex-col items-end gap-2">
-              <div className="inline-flex rounded-full border border-border bg-background p-0.5 text-xs">
+              <div className="relative inline-flex rounded-full border border-border bg-background p-0.5 text-xs">
+                {/* sliding pill — uses left-1/2 / right-1/2 with flex-1 buttons so 50% = exact midpoint */}
+                <span
+                  className={`absolute inset-y-0.5 rounded-full bg-primary transition-[left,right] duration-350 ease-[cubic-bezier(0.4,0,0.2,1)] ${
+                    mode === "ticker" ? "left-0.5 right-1/2" : "left-1/2 right-0.5"
+                  }`}
+                />
                 <button
-                  className={`px-3 py-1 rounded-full ${mode === "ticker" ? "bg-primary text-primary-foreground" : ""
-                    }`}
+                  className={`relative z-10 flex-1 px-4 py-1 text-center transition-colors duration-300 ${
+                    mode === "ticker" ? "text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+                  }`}
                   onClick={() => setMode("ticker")}
                 >
                   Focused on ticker
                 </button>
                 <button
-                  className={`px-3 py-1 rounded-full ${mode === "global" ? "bg-primary text-primary-foreground" : ""
-                    }`}
+                  className={`relative z-10 flex-1 px-4 py-1 text-center transition-colors duration-300 ${
+                    mode === "global" ? "text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+                  }`}
                   onClick={() => setMode("global")}
                 >
                   Global
                 </button>
               </div>
-              {mode === "ticker" && active && (
-                <div className="text-xs text-muted-foreground">
-                  Context: <span className="font-mono">{active.ticker}</span> ·{" "}
-                  {active.company}
-                </div>
-              )}
+              <div
+                className={`text-xs text-muted-foreground overflow-hidden transition-all duration-300 ease-in-out ${
+                  mode === "ticker" && active ? "max-h-8 opacity-100" : "max-h-0 opacity-0"
+                }`}
+              >
+                Context: <span className="font-mono">{active?.ticker}</span> ·{" "}
+                {active?.company}
+              </div>
             </div>
           </CardHeader>
           <CardContent className="flex-1 flex flex-col pt-0 min-h-0">
@@ -341,12 +351,19 @@ export default function ExplorePage() {
               <div ref={messagesEndRef} />
             </div>
 
-            <div className="mb-3 flex flex-wrap gap-2">
-              {[
-                "Summarize this company's business model",
-                "Why is this stock under‑covered?",
-                "What are key risks in the latest 10‑K?",
-              ].map((q) => (
+            <div key={mode} className="mb-3 flex flex-wrap gap-2 animate-in fade-in duration-300">
+              {(mode === "ticker"
+                ? [
+                    "Summarize this company's business model",
+                    "Why is this stock under‑covered?",
+                    "What are key risks in the latest 10‑K?",
+                  ]
+                : [
+                    "Which stocks have the widest coverage gap?",
+                    "Compare earnings beats across under‑covered stocks",
+                    "What sectors are most under‑covered?",
+                  ]
+              ).map((q) => (
                 <Button
                   key={q}
                   variant="outline"
