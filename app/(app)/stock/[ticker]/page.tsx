@@ -246,6 +246,7 @@ export default function StockDetailPage({ params }: { params: Promise<{ ticker: 
     await sendChatMessageStream(
       userMessage,
       ticker,
+      stock?.company ?? null,
       history,
       (token) => {
         setChatMessages((prev) => {
