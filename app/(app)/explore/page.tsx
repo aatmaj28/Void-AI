@@ -95,10 +95,12 @@ export default function ExplorePage() {
       .map((m) => ({ role: m.role, content: m.content }))
 
     const ticker = mode === "ticker" && active ? active.ticker : null
+    const companyName = mode === "ticker" && active ? active.company : null
 
     await sendChatMessageStream(
       text,
       ticker,
+      companyName,
       history,
       (token) => {
         setMessages((prev) => {

@@ -71,6 +71,7 @@ export async function sendChatMessage(
 export async function sendChatMessageStream(
     message: string,
     ticker: string | null,
+    companyName: string | null,
     history: ChatMessage[],
     onToken: (token: string) => void,
     onSources: (sources: SourceDocument[]) => void,
@@ -84,6 +85,7 @@ export async function sendChatMessageStream(
             body: JSON.stringify({
                 message,
                 ticker,
+                company_name: companyName,
                 history: history.map((m) => ({ role: m.role, content: m.content })),
             }),
         })
