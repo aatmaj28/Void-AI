@@ -21,7 +21,7 @@ import { formatMarketCap, formatPercent } from "@/lib/mock-data"
 import { sendChatMessage, sendChatMessageStream } from "@/lib/rag-chat"
 import { ChatBubble, ThinkingBubble } from "@/components/chat-bubble"
 
-type ChatMessage = { role: "user" | "assistant"; content: string }
+type ChatMessage = { role: "user" | "assistant"; content: string; hasWebSources?: boolean }
 
 export default function ExplorePage() {
   const router = useRouter()
@@ -35,10 +35,12 @@ export default function ExplorePage() {
   const [input, setInput] = useState("")
   const [sending, setSending] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const chatContainerRef = useRef<HTMLDivElement>(null)
 
-  // Auto-scroll to bottom when messages change or sending state changes
+  // Scroll only the chat container, not the whole page
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+    const el = chatContainerRef.current
+    if (el) el.scrollTop = el.scrollHeight
   }, [messages, sending])
 
   useEffect(() => {
@@ -110,7 +112,15 @@ export default function ExplorePage() {
         })
       },
       (sources) => {
-        // Optional: Handle sources if needed
+        const hasWeb = sources.some((s) => s.source_type === "web")
+        if (hasWeb) {
+          setMessages((prev) => {
+            const updated = [...prev]
+            const lastIndex = updated.length - 1
+            updated[lastIndex] = { ...updated[lastIndex], hasWebSources: true }
+            return updated
+          })
+        }
       },
       () => {
         setSending(false)
@@ -318,9 +328,9 @@ export default function ExplorePage() {
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto space-y-4 mb-4 pr-1">
+            <div ref={chatContainerRef} className="flex-1 overflow-y-auto space-y-4 mb-4 pr-1">
               {messages.map((m, idx) => (
-                <ChatBubble key={idx} role={m.role} content={m.content} />
+                <ChatBubble key={idx} role={m.role} content={m.content} hasWebSources={m.hasWebSources} />
               ))}
               {sending && messages[messages.length - 1]?.role === "assistant" && !messages[messages.length - 1]?.content && <ThinkingBubble />}
               {messages.length === 0 && (
