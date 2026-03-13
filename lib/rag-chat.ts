@@ -18,10 +18,11 @@ export type ChatMessage = {
 
 export type SourceDocument = {
     ticker: string
-    source_type: string
+    source_type: string  // "stock_profile" | "sec_filing" | "web"
     form_type: string | null
     section: string | null
     snippet: string
+    url: string | null
 }
 
 export type ChatResponse = {
