@@ -31,7 +31,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Input } from "@/components/ui/input"
 import { formatMarketCap, formatVolume, formatPercent } from "@/lib/mock-data"
 import { sendChatMessage, sendChatMessageStream } from "@/lib/rag-chat"
-import { getAnalysis, generateAnalysis, type AnalysisData } from "@/lib/analysis-api"
+import { getAnalysis, generateAnalysis, generateAnalysisStream, type AnalysisData, type StreamingTask } from "@/lib/analysis-api"
 import { ChatBubble, ThinkingBubble } from "@/components/chat-bubble"
 import { DebateTranscript } from "@/components/debate-transcript"
 import {
@@ -105,6 +105,55 @@ function CollapsibleCard({ title, children, defaultOpen = true, variant = "defau
   )
 }
 
+const agentStyle: Record<string, { color: string; bg: string; icon: string }> = {
+  "Bull Analyst": { color: "text-emerald-400", bg: "bg-emerald-400/10 border-emerald-400/20", icon: "TrendingUp" },
+  "Bear Analyst": { color: "text-red-400", bg: "bg-red-400/10 border-red-400/20", icon: "TrendingDown" },
+  "Fundamental Research Analyst": { color: "text-blue-400", bg: "bg-blue-400/10 border-blue-400/20", icon: "BarChart3" },
+  "Debate Moderator": { color: "text-amber-400", bg: "bg-amber-400/10 border-amber-400/20", icon: "Users" },
+  "Investment Strategist": { color: "text-purple-400", bg: "bg-purple-400/10 border-purple-400/20", icon: "Brain" },
+}
+
+const phaseLabels: Record<string, string> = {
+  phase1: "Phase 1: Independent Research",
+  round1: "Round 1: Bear vs Bull",
+  round2: "Round 2: Bull vs Bear",
+  synthesis: "Synthesis",
+}
+
+function LiveDebateCard({ task, isLatest }: { task: StreamingTask; isLatest: boolean }) {
+  const [expanded, setExpanded] = useState(false)
+  const style = agentStyle[task.agent] || { color: "text-gray-400", bg: "bg-gray-400/10 border-gray-400/20" }
+  const IconComponent = task.agent.includes("Bull") ? TrendingUp
+    : task.agent.includes("Bear") ? TrendingDown
+    : task.agent.includes("Fundamental") ? BarChart3
+    : task.agent.includes("Moderator") ? Users
+    : Brain
+
+  return (
+    <div className={`rounded-lg border ${style.bg} p-3 transition-all duration-500 ${isLatest ? "animate-in fade-in slide-in-from-bottom-2" : ""}`}>
+      <div className="flex items-center gap-2 mb-1.5">
+        <span className={`text-xs font-mono text-muted-foreground`}>T{task.taskIndex}/9</span>
+        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${style.bg} ${style.color}`}>
+          <IconComponent className="w-3 h-3" />
+          {task.agent}
+        </span>
+        <span className="text-xs text-muted-foreground">{task.role}</span>
+      </div>
+      <p className="text-sm text-foreground/80 leading-relaxed">
+        {expanded ? task.output : task.summary}
+      </p>
+      {task.output && task.output !== task.summary && (
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="mt-1.5 text-xs text-primary hover:text-primary/80 transition-colors"
+        >
+          {expanded ? "Show less" : "Show full output"}
+        </button>
+      )}
+    </div>
+  )
+}
+
 type StockDetail = {
   ticker: string; company: string; sector: string; industry: string; marketCap: number; price: number; change: number; changePercent: number; analystCount: number; gapScore: number; activityScore: number; opportunityType: string; high52w: number; low52w: number; volume: number; avgVolume: number; pe: number | null; priceHistory: number[]
 }
@@ -137,6 +186,9 @@ export default function StockDetailPage({ params }: { params: Promise<{ ticker: 
   const [analysis, setAnalysis] = useState<AnalysisData | null>(null)
   const [analysisLoading, setAnalysisLoading] = useState(false)
   const [analysisError, setAnalysisError] = useState<string | null>(null)
+  const [streamingTasks, setStreamingTasks] = useState<StreamingTask[]>([])
+  const [isStreaming, setIsStreaming] = useState(false)
+  const debateFeedRef = useRef<HTMLDivElement>(null)
 
   // Auto-scroll chat to bottom (scroll container, not the whole page)
   useEffect(() => {
@@ -216,14 +268,33 @@ export default function StockDetailPage({ params }: { params: Promise<{ ticker: 
   const handleGenerateAnalysis = async (force = false) => {
     setAnalysisLoading(true)
     setAnalysisError(null)
-    try {
-      const result = await generateAnalysis(ticker, force)
-      setAnalysis(result)
-    } catch (err) {
-      setAnalysisError(err instanceof Error ? err.message : "Analysis generation failed")
-    } finally {
-      setAnalysisLoading(false)
-    }
+    setStreamingTasks([])
+    setIsStreaming(true)
+    setAnalysis(null)
+
+    await generateAnalysisStream(
+      ticker,
+      force,
+      (task) => {
+        setStreamingTasks((prev) => [...prev, task])
+        // Auto-scroll the debate feed
+        setTimeout(() => {
+          debateFeedRef.current?.scrollTo({ top: debateFeedRef.current.scrollHeight, behavior: "smooth" })
+        }, 50)
+      },
+      (result) => {
+        setAnalysis(result)
+      },
+      () => {
+        setIsStreaming(false)
+        setAnalysisLoading(false)
+      },
+      (error) => {
+        setAnalysisError(error)
+        setIsStreaming(false)
+        setAnalysisLoading(false)
+      },
+    )
   }
 
   if (loading) return (<div className="container mx-auto px-4 py-8"><h1 className="text-2xl font-bold">Loading {ticker}…</h1><div className="flex items-center justify-center py-24 text-muted-foreground">Loading…</div></div>)
@@ -401,15 +472,73 @@ export default function StockDetailPage({ params }: { params: Promise<{ ticker: 
 
         {/* AI Analysis Tab */}
         <TabsContent value="analysis" className="space-y-6">
-          {/* Loading state — fetching cached or generating */}
+          {/* Loading state — live debate feed or simple spinner */}
           {analysisLoading && !analysis && (
-            <div className="flex flex-col items-center justify-center py-16 space-y-4">
-              <div className="relative">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary" />
-                <Brain className="h-5 w-5 text-primary absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+            <div className="space-y-4">
+              {/* Header */}
+              <div className="flex items-center gap-3">
+                <div className="relative">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+                  <Brain className="h-4 w-4 text-primary absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium">AI agents are analyzing {ticker}...</p>
+                  <p className="text-xs text-muted-foreground">
+                    {streamingTasks.length > 0
+                      ? `Task ${streamingTasks.length} of 9 complete`
+                      : "Gathering data and starting debate..."
+                    }
+                  </p>
+                </div>
               </div>
-              <p className="text-sm font-medium">AI agents are analyzing {ticker}...</p>
-              <p className="text-xs text-muted-foreground">5 AI agents debating in 2 rounds — this takes 45-60 seconds</p>
+
+              {/* Progress bar */}
+              <div className="h-1.5 bg-secondary rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-primary to-cyan-400 rounded-full transition-all duration-700 ease-out"
+                  style={{ width: `${(streamingTasks.length / 9) * 100}%` }}
+                />
+              </div>
+
+              {/* Live debate feed */}
+              {streamingTasks.length > 0 && (
+                <div
+                  ref={debateFeedRef}
+                  className="max-h-[500px] overflow-y-auto space-y-3 pr-1"
+                >
+                  {streamingTasks.map((task, i) => {
+                    const isLatest = i === streamingTasks.length - 1
+                    const prevPhase = i > 0 ? streamingTasks[i - 1].phase : null
+                    const showPhaseLabel = task.phase !== prevPhase
+                    return (
+                      <React.Fragment key={i}>
+                        {showPhaseLabel && (
+                          <div className="flex items-center gap-2 pt-1">
+                            <div className="h-px flex-1 bg-border/50" />
+                            <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
+                              {phaseLabels[task.phase] || task.phase}
+                            </span>
+                            <div className="h-px flex-1 bg-border/50" />
+                          </div>
+                        )}
+                        <LiveDebateCard task={task} isLatest={isLatest} />
+                      </React.Fragment>
+                    )
+                  })}
+
+                  {/* Typing indicator for next task */}
+                  {isStreaming && streamingTasks.length < 9 && (
+                    <div className="flex items-center gap-2 pl-3 py-2 text-muted-foreground animate-pulse">
+                      <div className="flex gap-1">
+                        <div className="w-1.5 h-1.5 rounded-full bg-muted-foreground/50 animate-bounce" style={{ animationDelay: "0ms" }} />
+                        <div className="w-1.5 h-1.5 rounded-full bg-muted-foreground/50 animate-bounce" style={{ animationDelay: "150ms" }} />
+                        <div className="w-1.5 h-1.5 rounded-full bg-muted-foreground/50 animate-bounce" style={{ animationDelay: "300ms" }} />
+                      </div>
+                      <span className="text-xs">Next agent is thinking...</span>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
