@@ -138,9 +138,12 @@ export default function StockDetailPage({ params }: { params: Promise<{ ticker: 
   const [analysisLoading, setAnalysisLoading] = useState(false)
   const [analysisError, setAnalysisError] = useState<string | null>(null)
 
-  // Auto-scroll chat to bottom
+  // Auto-scroll chat to bottom (scroll container, not the whole page)
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" })
+    const container = chatEndRef.current?.parentElement
+    if (container) {
+      container.scrollTop = container.scrollHeight
+    }
   }, [chatMessages, chatSending])
 
   useEffect(() => {
