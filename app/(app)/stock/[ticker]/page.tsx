@@ -409,7 +409,7 @@ export default function StockDetailPage({ params }: { params: Promise<{ ticker: 
                 <Brain className="h-5 w-5 text-primary absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
               </div>
               <p className="text-sm font-medium">AI agents are analyzing {ticker}...</p>
-              <p className="text-xs text-muted-foreground">5 AI agents debating in 3 rounds — this takes 60-90 seconds</p>
+              <p className="text-xs text-muted-foreground">5 AI agents debating in 2 rounds — this takes 45-60 seconds</p>
             </div>
           )}
 
@@ -422,7 +422,7 @@ export default function StockDetailPage({ params }: { params: Promise<{ ticker: 
               <h3 className="text-lg font-semibold">No AI Analysis Yet</h3>
               <p className="text-sm text-muted-foreground text-center max-w-md">
                 Generate an investment hypothesis using our multi-agent AI system.
-                5 AI agents will debate across 3 rounds — analyzing market data, coverage gaps,
+                5 AI agents will debate across 2 rounds — analyzing market data, coverage gaps,
                 SEC filings, and news to build a battle-tested investment thesis.
               </p>
               <Button onClick={() => handleGenerateAnalysis(false)} className="gap-2">
@@ -518,7 +518,7 @@ export default function StockDetailPage({ params }: { params: Promise<{ ticker: 
                             </>
                           )}
                         </Button>
-                        <p className="text-xs text-muted-foreground">Takes 60-90 seconds · 5 AI agents debate in 3 rounds</p>
+                        <p className="text-xs text-muted-foreground">Takes 45-60 seconds · 5 AI agents debate in 2 rounds</p>
                       </div>
                     </CardContent>
                   </Card>
