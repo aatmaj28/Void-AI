@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState } from "react"
-import { ChevronDown, ChevronRight, Brain, BarChart3, Search, Target, Shield, Newspaper } from "lucide-react"
+import { ChevronDown, ChevronRight, Brain, BarChart3, TrendingUp, TrendingDown, Users, Newspaper } from "lucide-react"
 
 interface DebateStep {
     agent: string
@@ -25,27 +25,27 @@ interface DebateTranscriptProps {
 }
 
 const agentIcons: Record<string, typeof Brain> = {
-    "Data Analyst": BarChart3,
-    "Coverage Specialist": Search,
-    "Fundamental Analyst": Brain,
-    "Strategist": Target,
-    "Devil's Advocate": Shield,
+    "Fundamental Research Analyst": BarChart3,
+    "Bull Analyst": TrendingUp,
+    "Bear Analyst": TrendingDown,
+    "Debate Moderator": Users,
+    "Investment Strategist": Brain,
 }
 
 const agentColors: Record<string, string> = {
-    "Data Analyst": "text-blue-400 bg-blue-400/10 border-blue-400/20",
-    "Coverage Specialist": "text-purple-400 bg-purple-400/10 border-purple-400/20",
-    "Fundamental Analyst": "text-emerald-400 bg-emerald-400/10 border-emerald-400/20",
-    "Strategist": "text-amber-400 bg-amber-400/10 border-amber-400/20",
-    "Devil's Advocate": "text-red-400 bg-red-400/10 border-red-400/20",
+    "Fundamental Research Analyst": "text-blue-400 bg-blue-400/10 border-blue-400/20",
+    "Bull Analyst": "text-emerald-400 bg-emerald-400/10 border-emerald-400/20",
+    "Bear Analyst": "text-red-400 bg-red-400/10 border-red-400/20",
+    "Debate Moderator": "text-amber-400 bg-amber-400/10 border-amber-400/20",
+    "Investment Strategist": "text-purple-400 bg-purple-400/10 border-purple-400/20",
 }
 
 const agentDotColors: Record<string, string> = {
-    "Data Analyst": "bg-blue-400",
-    "Coverage Specialist": "bg-purple-400",
-    "Fundamental Analyst": "bg-emerald-400",
-    "Strategist": "bg-amber-400",
-    "Devil's Advocate": "bg-red-400",
+    "Fundamental Research Analyst": "bg-blue-400",
+    "Bull Analyst": "bg-emerald-400",
+    "Bear Analyst": "bg-red-400",
+    "Debate Moderator": "bg-amber-400",
+    "Investment Strategist": "bg-purple-400",
 }
 
 export function DebateTranscript({ steps, newsContext, generatedAt, modelUsed }: DebateTranscriptProps) {
