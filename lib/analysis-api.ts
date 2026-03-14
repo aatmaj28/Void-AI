@@ -104,3 +104,82 @@ export async function generateAnalysis(
 
     return response.json()
 }
+
+// --- Streaming types ---
+
+export interface StreamingTask {
+    agent: string
+    role: string
+    phase: string
+    output: string
+    summary: string
+    taskIndex: number
+    totalTasks: number
+}
+
+/**
+ * Generate AI analysis with SSE streaming — yields each agent's output live.
+ * Calls the /analyze/{ticker}/stream endpoint.
+ */
+export async function generateAnalysisStream(
+    ticker: string,
+    force: boolean = false,
+    onTask: (task: StreamingTask) => void,
+    onAnalysis: (analysis: AnalysisData) => void,
+    onDone: () => void,
+    onError: (error: string) => void,
+) {
+    const url = `${RAG_API_URL}/analyze/${ticker.toUpperCase()}/stream${force ? "?force=true" : ""}`
+
+    try {
+        const response = await fetch(url, { method: "POST" })
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => null)
+            throw new Error(
+                errorData?.detail || `Analysis stream failed: ${response.status} ${response.statusText}`
+            )
+        }
+
+        if (!response.body) throw new Error("ReadableStream not supported")
+
+        const reader = response.body.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ""
+
+        while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+
+            buffer += decoder.decode(value, { stream: true })
+            const lines = buffer.split("\n")
+            buffer = lines.pop() || ""
+
+            for (let line of lines) {
+                line = line.trim()
+                if (line.startsWith("data: ")) {
+                    const data = line.slice(6)
+                    if (data === "[DONE]") {
+                        onDone()
+                        return
+                    }
+                    try {
+                        const parsed = JSON.parse(data)
+                        if (parsed.type === "task") {
+                            onTask(parsed as StreamingTask)
+                        } else if (parsed.type === "analysis") {
+                            onAnalysis(parsed as AnalysisData)
+                        } else if (parsed.type === "error") {
+                            onError(parsed.message || "Unknown error")
+                        }
+                    } catch {
+                        // ignore JSON parse error on incomplete chunks
+                    }
+                }
+            }
+        }
+        onDone()
+    } catch (error) {
+        onError(error instanceof Error ? error.message : "Stream error")
+    }
+}
