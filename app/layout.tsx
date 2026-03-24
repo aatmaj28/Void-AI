@@ -5,6 +5,7 @@ import { Analytics } from "@vercel/analytics/next"
 import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "@/components/ui/toaster"
 import { UserProvider } from "@/lib/user-context"
+import { WatchlistProvider } from "@/lib/watchlist-context"
 import { PageTransition } from "@/components/page-transition"
 import "./globals.css"
 
@@ -60,9 +61,11 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <UserProvider>
-            <PageTransition>
-              {children}
-            </PageTransition>
+            <WatchlistProvider>
+              <PageTransition>
+                {children}
+              </PageTransition>
+            </WatchlistProvider>
           </UserProvider>
         </ThemeProvider>
         <Toaster />

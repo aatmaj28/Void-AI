@@ -1,4 +1,5 @@
 import { Logo } from "@/components/logo"
+import { Linkedin } from "lucide-react"
 
 export function Footer() {
   return (
@@ -22,19 +23,41 @@ export function Footer() {
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
               Developers
             </p>
-            <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-6 text-sm">
-              <a
-                href="mailto:salunke.aa@northeastern.edu"
-                className="text-foreground hover:text-primary transition-colors"
-              >
-                Aatmaj Amol Salunke
-              </a>
-              <a
-                href="mailto:mahendrakar.v@northeastern.edu"
-                className="text-foreground hover:text-primary transition-colors"
-              >
-                Vijwal Mahendrakar
-              </a>
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-8 text-sm">
+              <div className="flex items-center gap-2">
+                <a
+                  href="mailto:salunke.aa@northeastern.edu"
+                  className="text-foreground hover:text-primary transition-colors"
+                >
+                  Aatmaj Amol Salunke
+                </a>
+                <a
+                  href="https://www.linkedin.com/in/aatmaj-salunke-7106041b0/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-muted-foreground hover:text-[#0A66C2] transition-colors"
+                  aria-label="Aatmaj Amol Salunke LinkedIn Profile"
+                >
+                  <Linkedin className="h-4 w-4" />
+                </a>
+              </div>
+              <div className="flex items-center gap-2">
+                <a
+                  href="mailto:mahendrakar.v@northeastern.edu"
+                  className="text-foreground hover:text-primary transition-colors"
+                >
+                  Vijwal Mahendrakar
+                </a>
+                <a
+                  href="https://www.linkedin.com/in/vijwal-mahendrakar-1b6a8215a/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-muted-foreground hover:text-[#0A66C2] transition-colors"
+                  aria-label="Vijwal Mahendrakar LinkedIn Profile"
+                >
+                  <Linkedin className="h-4 w-4" />
+                </a>
+              </div>
             </div>
           </div>
 
