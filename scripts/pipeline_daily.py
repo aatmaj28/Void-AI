@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Daily Pipeline: Fetch market data, run scoring engine, generate RAG stock profiles.
 
@@ -838,6 +838,14 @@ def main():
     except Exception as e:
         print(f"⚠️ Quick hypothesis generation failed: {e}")
         print("  (All other pipeline data is saved — hypotheses can be generated on-demand)")
+
+    print("\n" + "=" * 60 + "\nGenerating Alerts based on user settings...\n" + "=" * 60)
+    try:
+        import subprocess
+        subprocess.run([sys.executable, "scripts/generate_alerts.py"], check=True)
+        print("✅ Alert generation complete!")
+    except Exception as e:
+        print(f"⚠️ Alert generation failed: {e}")
 
     print(f"\n✅ Daily pipeline complete!")
 

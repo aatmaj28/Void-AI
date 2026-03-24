@@ -1,8 +1,6 @@
 "use client"
 
-import React from "react"
-
-import { useState } from "react"
+import React, { useState, useEffect } from "react"
 import Link from "next/link"
 import {
   Bell,
@@ -17,13 +15,13 @@ import {
   AlertCircle,
   Settings,
   Mail,
+  Loader2,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
 import { Input } from "@/components/ui/input"
-import { Checkbox } from "@/components/ui/checkbox"
 import {
   Select,
   SelectContent,
@@ -31,7 +29,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { mockAlerts, getRelativeTime, type Alert } from "@/lib/mock-data"
+import { getRelativeTime } from "@/lib/utils"
+import { useUser } from "@/lib/user-context"
+import { useToast } from "@/hooks/use-toast"
+import { 
+  fetchUserAlerts, 
+  fetchUserAlertSettings, 
+  updateAlertSettings, 
+  markAlertAsRead, 
+  markAllAlertsAsRead, 
+  removeAlert, 
+  clearReadAlerts, 
+  Alert as SupabaseAlert,
+  AlertSettings
+} from "@/lib/alerts-api"
 
 const alertTypeConfig: Record<string, { icon: React.ElementType; color: string; label: string }> = {
   gap_increase: { icon: TrendingUp, color: "text-primary", label: "Gap Increase" },
@@ -41,30 +52,93 @@ const alertTypeConfig: Record<string, { icon: React.ElementType; color: string; 
   price_movement: { icon: TrendingUp, color: "text-foreground", label: "Price Movement" },
 }
 
-const severityColors = {
+const severityColors: Record<string, string> = {
   high: "border-destructive/50 bg-destructive/10 text-destructive",
   medium: "border-warning/50 bg-warning/10 text-warning",
   low: "border-muted-foreground/50 bg-muted text-muted-foreground",
 }
 
 export default function AlertsPage() {
-  const [alerts, setAlerts] = useState<Alert[]>(mockAlerts)
+  const { user } = useUser()
+  const { toast } = useToast()
+  const [alerts, setAlerts] = useState<SupabaseAlert[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  
   const [filterType, setFilterType] = useState<string>("all")
   const [filterSeverity, setFilterSeverity] = useState<string>("all")
   const [filterRead, setFilterRead] = useState<string>("all")
   const [showSettings, setShowSettings] = useState(false)
+  const [isSavingSettings, setIsSavingSettings] = useState(false)
 
   // Alert settings
-  const [alertSettings, setAlertSettings] = useState({
-    gapIncrease: true,
-    volumeSpike: true,
-    newOpportunity: true,
-    coverageChange: true,
-    priceMovement: false,
-    emailNotifications: true,
-    gapThreshold: 5,
-    volumeThreshold: 2,
+  const [alertSettings, setAlertSettings] = useState<AlertSettings>({
+    user_email: user?.email || "",
+    gap_increase: true,
+    volume_spike: true,
+    new_opportunity: true,
+    coverage_change: true,
+    price_movement: false,
+    email_notifications: true,
+    gap_threshold: 5,
+    volume_threshold: 2,
   })
+
+  useEffect(() => {
+    if (!user?.email) return
+
+    const loadData = async () => {
+      setIsLoading(true)
+      try {
+        const [alertsData, settingsData] = await Promise.all([
+          fetchUserAlerts(user.email),
+          fetchUserAlertSettings(user.email)
+        ])
+        
+        setAlerts(alertsData)
+        if (settingsData) {
+          setAlertSettings(settingsData)
+        } else {
+          // If no settings exist yet, set it up with current user email
+          setAlertSettings(prev => ({ ...prev, user_email: user.email! }))
+        }
+      } catch (error) {
+        console.error("Failed to load alerts data", error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    loadData()
+  }, [user?.email])
+
+  const handleSaveSettings = async () => {
+    if (!user?.email) return
+    setIsSavingSettings(true)
+    try {
+      await updateAlertSettings({
+        ...alertSettings,
+        user_email: user.email
+      })
+      toast({
+        title: "Settings Saved",
+        description: "Your alert settings have been saved successfully.",
+        className: "border-primary/50 shadow-[0_0_15px_rgba(168,85,247,0.3)] bg-card",
+      })
+    } catch (error) {
+      console.error("Failed to save settings", error)
+      toast({
+        title: "Error",
+        description: "Failed to save settings. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSavingSettings(false)
+    }
+  }
+
+  const handleSettingChange = (key: keyof AlertSettings, value: any) => {
+    setAlertSettings(prev => ({ ...prev, [key]: value }))
+  }
 
   const filteredAlerts = alerts.filter((alert) => {
     const matchesType = filterType === "all" || alert.type === filterType
@@ -78,35 +152,65 @@ export default function AlertsPage() {
 
   const unreadCount = alerts.filter((a) => !a.read).length
 
-  const markAsRead = (id: string) => {
+  const handleMarkAsRead = async (id: string) => {
+    // Optimistic update
     setAlerts(alerts.map((a) => (a.id === id ? { ...a, read: true } : a)))
+    try {
+      await markAlertAsRead(id)
+    } catch (error) {
+      // Revert on failure
+      setAlerts(alerts.map((a) => (a.id === id ? { ...a, read: false } : a)))
+    }
   }
 
-  const markAllAsRead = () => {
+  const handleMarkAllAsRead = async () => {
+    if (!user?.email) return
+    const prevAlerts = [...alerts]
+    // Optimistic update
     setAlerts(alerts.map((a) => ({ ...a, read: true })))
+    try {
+      await markAllAlertsAsRead(user.email)
+    } catch (error) {
+      setAlerts(prevAlerts)
+    }
   }
 
-  const deleteAlert = (id: string) => {
+  const handleDeleteAlert = async (id: string) => {
+    const prevAlerts = [...alerts]
     setAlerts(alerts.filter((a) => a.id !== id))
+    try {
+      await removeAlert(id)
+    } catch (error) {
+      setAlerts(prevAlerts)
+    }
   }
 
-  const clearAllRead = () => {
+  const handleClearAllRead = async () => {
+    if (!user?.email) return
+    const prevAlerts = [...alerts]
     setAlerts(alerts.filter((a) => !a.read))
+    try {
+      await clearReadAlerts(user.email)
+    } catch (error) {
+      setAlerts(prevAlerts)
+    }
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
+    <div className="container mx-auto px-4 py-8 max-w-7xl">
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-3xl font-bold">Alerts</h1>
           <p className="text-muted-foreground mt-1">
-            {unreadCount > 0
+            {isLoading 
+              ? "Loading..." 
+              : unreadCount > 0
               ? `You have ${unreadCount} unread alert${unreadCount > 1 ? "s" : ""}`
               : "All caught up!"}
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={markAllAsRead} disabled={unreadCount === 0}>
+          <Button variant="outline" onClick={handleMarkAllAsRead} disabled={unreadCount === 0 || isLoading}>
             <Check className="h-4 w-4 mr-2" />
             Mark All Read
           </Button>
@@ -124,7 +228,20 @@ export default function AlertsPage() {
       {showSettings && (
         <Card className="mb-6 border-primary/30">
           <CardHeader>
-            <CardTitle>Alert Settings</CardTitle>
+            <CardTitle className="flex items-center justify-between">
+              <span>Alert Settings</span>
+              <Button 
+                onClick={handleSaveSettings} 
+                disabled={isSavingSettings}
+                size="sm"
+              >
+                {isSavingSettings ? (
+                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Saving...</>
+                ) : (
+                  "Save Settings"
+                )}
+              </Button>
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
             <div>
@@ -136,10 +253,8 @@ export default function AlertsPage() {
                     <span className="text-sm">Gap Score Increase</span>
                   </div>
                   <Switch
-                    checked={alertSettings.gapIncrease}
-                    onCheckedChange={(c) =>
-                      setAlertSettings({ ...alertSettings, gapIncrease: c })
-                    }
+                    checked={alertSettings.gap_increase}
+                    onCheckedChange={(c) => handleSettingChange("gap_increase", c)}
                   />
                 </div>
                 <div className="flex items-center justify-between">
@@ -148,10 +263,8 @@ export default function AlertsPage() {
                     <span className="text-sm">Volume Spike</span>
                   </div>
                   <Switch
-                    checked={alertSettings.volumeSpike}
-                    onCheckedChange={(c) =>
-                      setAlertSettings({ ...alertSettings, volumeSpike: c })
-                    }
+                    checked={alertSettings.volume_spike}
+                    onCheckedChange={(c) => handleSettingChange("volume_spike", c)}
                   />
                 </div>
                 <div className="flex items-center justify-between">
@@ -160,10 +273,8 @@ export default function AlertsPage() {
                     <span className="text-sm">New Opportunity</span>
                   </div>
                   <Switch
-                    checked={alertSettings.newOpportunity}
-                    onCheckedChange={(c) =>
-                      setAlertSettings({ ...alertSettings, newOpportunity: c })
-                    }
+                    checked={alertSettings.new_opportunity}
+                    onCheckedChange={(c) => handleSettingChange("new_opportunity", c)}
                   />
                 </div>
                 <div className="flex items-center justify-between">
@@ -172,10 +283,8 @@ export default function AlertsPage() {
                     <span className="text-sm">Coverage Change</span>
                   </div>
                   <Switch
-                    checked={alertSettings.coverageChange}
-                    onCheckedChange={(c) =>
-                      setAlertSettings({ ...alertSettings, coverageChange: c })
-                    }
+                    checked={alertSettings.coverage_change}
+                    onCheckedChange={(c) => handleSettingChange("coverage_change", c)}
                   />
                 </div>
                 <div className="flex items-center justify-between">
@@ -184,10 +293,8 @@ export default function AlertsPage() {
                     <span className="text-sm">Price Movement</span>
                   </div>
                   <Switch
-                    checked={alertSettings.priceMovement}
-                    onCheckedChange={(c) =>
-                      setAlertSettings({ ...alertSettings, priceMovement: c })
-                    }
+                    checked={alertSettings.price_movement}
+                    onCheckedChange={(c) => handleSettingChange("price_movement", c)}
                   />
                 </div>
               </div>
@@ -202,13 +309,8 @@ export default function AlertsPage() {
                   </label>
                   <Input
                     type="number"
-                    value={alertSettings.gapThreshold}
-                    onChange={(e) =>
-                      setAlertSettings({
-                        ...alertSettings,
-                        gapThreshold: parseInt(e.target.value) || 0,
-                      })
-                    }
+                    value={alertSettings.gap_threshold}
+                    onChange={(e) => handleSettingChange("gap_threshold", parseInt(e.target.value) || 0)}
                     className="w-32"
                   />
                 </div>
@@ -219,13 +321,8 @@ export default function AlertsPage() {
                   <Input
                     type="number"
                     step="0.1"
-                    value={alertSettings.volumeThreshold}
-                    onChange={(e) =>
-                      setAlertSettings({
-                        ...alertSettings,
-                        volumeThreshold: parseFloat(e.target.value) || 0,
-                      })
-                    }
+                    value={alertSettings.volume_threshold}
+                    onChange={(e) => handleSettingChange("volume_threshold", parseFloat(e.target.value) || 0)}
                     className="w-32"
                   />
                 </div>
@@ -240,10 +337,8 @@ export default function AlertsPage() {
                   <span className="text-sm">Email Notifications</span>
                 </div>
                 <Switch
-                  checked={alertSettings.emailNotifications}
-                  onCheckedChange={(c) =>
-                    setAlertSettings({ ...alertSettings, emailNotifications: c })
-                  }
+                  checked={alertSettings.email_notifications}
+                  onCheckedChange={(c) => handleSettingChange("email_notifications", c)}
                 />
               </div>
             </div>
@@ -313,7 +408,7 @@ export default function AlertsPage() {
                   variant="outline"
                   size="sm"
                   className="w-full text-destructive hover:text-destructive bg-transparent"
-                  onClick={clearAllRead}
+                  onClick={handleClearAllRead}
                 >
                   <Trash2 className="h-4 w-4 mr-2" />
                   Clear Read Alerts
@@ -330,19 +425,25 @@ export default function AlertsPage() {
             <CardContent className="space-y-3">
               <div className="flex justify-between items-center">
                 <span className="text-sm text-muted-foreground">Total</span>
-                <span className="font-mono font-medium">{alerts.length}</span>
+                <div className="w-10 text-right">
+                  <span className="font-mono font-medium">{alerts.length}</span>
+                </div>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-sm text-muted-foreground">Unread</span>
-                <Badge variant={unreadCount > 0 ? "default" : "secondary"} className="font-mono">
-                  {unreadCount}
-                </Badge>
+                <div className="w-10 text-right">
+                  <span className={`font-mono font-medium ${unreadCount > 0 ? 'text-primary' : 'text-foreground'}`}>
+                    {unreadCount}
+                  </span>
+                </div>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-sm text-muted-foreground">High Priority</span>
-                <span className="font-mono font-medium text-destructive">
-                  {alerts.filter((a) => a.severity === "high" && !a.read).length}
-                </span>
+                <div className="w-10 text-right">
+                  <span className="font-mono font-medium text-destructive">
+                    {alerts.filter((a) => a.severity === "high" && !a.read).length}
+                  </span>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -352,10 +453,15 @@ export default function AlertsPage() {
         <div className="lg:col-span-3">
           <Card>
             <CardContent className="p-0">
-              {filteredAlerts.length === 0 ? (
+              {isLoading ? (
+                <div className="py-12 text-center flex flex-col items-center">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
+                  <p className="text-muted-foreground">Loading your alerts...</p>
+                </div>
+              ) : filteredAlerts.length === 0 ? (
                 <div className="py-12 text-center">
                   <BellOff className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                  <p className="text-muted-foreground">No alerts match your filters</p>
+                  <p className="text-muted-foreground">No alerts match your filters or database is empty</p>
                 </div>
               ) : (
                 <div className="divide-y divide-border">
@@ -396,7 +502,7 @@ export default function AlertsPage() {
                               </Badge>
                               <Badge
                                 variant="outline"
-                                className={`text-xs ${severityColors[alert.severity]}`}
+                                className={`text-xs ${severityColors[alert.severity] || severityColors.low}`}
                               >
                                 {alert.severity}
                               </Badge>
@@ -408,7 +514,7 @@ export default function AlertsPage() {
                               {alert.message}
                             </p>
                             <p className="text-xs text-muted-foreground">
-                              {getRelativeTime(alert.timestamp)}
+                              {getRelativeTime(alert.created_at)}
                             </p>
                           </div>
 
@@ -419,7 +525,7 @@ export default function AlertsPage() {
                                 variant="ghost"
                                 size="icon"
                                 className="h-8 w-8"
-                                onClick={() => markAsRead(alert.id)}
+                                onClick={() => handleMarkAsRead(alert.id)}
                                 title="Mark as read"
                               >
                                 <Check className="h-4 w-4" />
@@ -429,7 +535,7 @@ export default function AlertsPage() {
                               variant="ghost"
                               size="icon"
                               className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                              onClick={() => deleteAlert(alert.id)}
+                              onClick={() => handleDeleteAlert(alert.id)}
                               title="Delete"
                             >
                               <Trash2 className="h-4 w-4" />

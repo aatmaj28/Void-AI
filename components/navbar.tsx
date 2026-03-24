@@ -21,6 +21,7 @@ import {
   Menu,
   X,
   MessageSquare,
+  Coins,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -34,6 +35,7 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Logo } from "@/components/logo"
 import { cn } from "@/lib/utils"
+import { fetchUnreadAlertsCount } from "@/lib/alerts-api"
 import { useUser } from "@/lib/user-context"
 import { fetchOpportunities, type Opportunity } from "@/lib/opportunities"
 
@@ -53,15 +55,28 @@ export function Navbar() {
   const { user, logout, isLoading } = useUser()
   const [mounted, setMounted] = React.useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false)
-  const [unreadAlerts] = React.useState(3)
+  const [unreadAlerts, setUnreadAlerts] = React.useState(0)
   const [searchQuery, setSearchQuery] = React.useState("")
-  const [allStocks, setAllStocks] = React.useState<Opportunity[]>([])
-  const [searchResults, setSearchResults] = React.useState<Opportunity[]>([])
-  const [showResults, setShowResults] = React.useState(false)
 
   React.useEffect(() => {
     setMounted(true)
-  }, [])
+    
+    // Fetch initial unread count
+    if (user?.email) {
+      fetchUnreadAlertsCount(user.email).then(count => setUnreadAlerts(count))
+      
+      // Optional: Refresh count periodically
+      const interval = setInterval(() => {
+        fetchUnreadAlertsCount(user.email).then(count => setUnreadAlerts(count))
+      }, 30000) // update every 30s
+      
+      return () => clearInterval(interval)
+    }
+  }, [user?.email, pathname])
+
+  const [allStocks, setAllStocks] = React.useState<Opportunity[]>([])
+  const [searchResults, setSearchResults] = React.useState<Opportunity[]>([])
+  const [showResults, setShowResults] = React.useState(false)
 
   // Load all opportunities once for client-side search
   React.useEffect(() => {
@@ -250,6 +265,12 @@ export function Navbar() {
                 <Link href="/settings" className="cursor-pointer">
                   <Settings className="mr-2 h-4 w-4" />
                   Settings
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/crypto" className="cursor-pointer">
+                  <Coins className="mr-2 h-4 w-4" />
+                  Crypto
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>

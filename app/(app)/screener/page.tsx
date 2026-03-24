@@ -11,6 +11,8 @@ import {
   Copy,
   MoreHorizontal,
   Star,
+  Activity,
+  Wand2,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -29,22 +31,21 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import { Textarea } from "@/components/ui/textarea"
+import { useUser } from "@/lib/user-context"
 import { formatMarketCap, formatPercent } from "@/lib/mock-data"
 import { fetchOpportunities, type Opportunity } from "@/lib/opportunities"
+import { fetchSavedScreens, saveScreen, deleteScreen, type SavedScreen, type Condition } from "@/lib/screener"
 import { LineChart, Line, ResponsiveContainer } from "recharts"
-
-interface Condition {
-  id: string
-  metric: string
-  operator: string
-  value: string
-}
-
-interface SavedScreen {
-  id: string
-  name: string
-  conditions: Condition[]
-}
 
 const metrics = [
   { value: "gapScore", label: "Gap Score" },
@@ -63,26 +64,7 @@ const operators = [
   { value: "eq", label: "=" },
 ]
 
-const defaultSavedScreens: SavedScreen[] = [
-  {
-    id: "1",
-    name: "High Gap Score",
-    conditions: [{ id: "1", metric: "gapScore", operator: "gte", value: "80" }],
-  },
-  {
-    id: "2",
-    name: "Under-Covered Tech",
-    conditions: [
-      { id: "1", metric: "analystCount", operator: "lte", value: "5" },
-      { id: "2", metric: "gapScore", operator: "gte", value: "70" },
-    ],
-  },
-  {
-    id: "3",
-    name: "High Activity",
-    conditions: [{ id: "1", metric: "activityScore", operator: "gte", value: "85" }],
-  },
-]
+// Substituted default models with fetch call
 
 function MiniSparkline({ data }: { data: number[] }) {
   const chartData = data.map((value, index) => ({ index, value }))
@@ -106,13 +88,19 @@ function MiniSparkline({ data }: { data: number[] }) {
 }
 
 export default function ScreenerPage() {
+  const { user } = useUser()
   const [conditions, setConditions] = useState<Condition[]>([
     { id: "1", metric: "gapScore", operator: "gte", value: "70" },
   ])
-  const [savedScreens, setSavedScreens] = useState<SavedScreen[]>(defaultSavedScreens)
+  const [savedScreens, setSavedScreens] = useState<SavedScreen[]>([])
   const [activeScreen, setActiveScreen] = useState<string | null>(null)
-  const [newScreenName, setNewScreenName] = useState("")
+  
   const [showSaveDialog, setShowSaveDialog] = useState(false)
+  const [newScreenName, setNewScreenName] = useState("")
+  const [newScreenDesc, setNewScreenDesc] = useState("")
+  const [newScreenTags, setNewScreenTags] = useState("")
+  const [isSaving, setIsSaving] = useState(false)
+
   const [stocks, setStocks] = useState<Opportunity[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -120,9 +108,19 @@ export default function ScreenerPage() {
   useEffect(() => {
     fetchOpportunities()
       .then(setStocks)
-      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"))
+      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load data"))
       .finally(() => setLoading(false))
   }, [])
+
+  useEffect(() => {
+    if (user?.email) {
+      fetchSavedScreens(user.email)
+        .then(setSavedScreens)
+        .catch(console.error)
+    } else {
+      setSavedScreens([])
+    }
+  }, [user?.email])
 
   const addCondition = () => {
     const newCondition: Condition = {
@@ -145,36 +143,73 @@ export default function ScreenerPage() {
   }
 
   const loadScreen = (screen: SavedScreen) => {
-    setConditions(screen.conditions)
+    const loadedConditions = Array.isArray(screen.conditions) ? screen.conditions : []
+    setConditions(loadedConditions.length ? loadedConditions : [{ id: "1", metric: "gapScore", operator: "gte", value: "70" }])
     setActiveScreen(screen.id)
   }
 
-  const saveScreen = () => {
+  const handleSaveScreen = async () => {
     if (!newScreenName.trim()) return
-
-    const newScreen: SavedScreen = {
-      id: Date.now().toString(),
-      name: newScreenName,
-      conditions: [...conditions],
+    if (!user?.email) {
+      alert("Please log in to save and recall screens.")
+      return
     }
-    setSavedScreens([...savedScreens, newScreen])
-    setNewScreenName("")
-    setShowSaveDialog(false)
-    setActiveScreen(newScreen.id)
+
+    setIsSaving(true)
+    try {
+      const tagsArray = newScreenTags.split(",").map(t => t.trim()).filter(Boolean)
+      const newScreen = await saveScreen(user.email, {
+        name: newScreenName,
+        description: newScreenDesc,
+        tags: tagsArray,
+        conditions: [...conditions],
+      })
+      setSavedScreens([newScreen, ...savedScreens])
+      setNewScreenName("")
+      setNewScreenDesc("")
+      setNewScreenTags("")
+      setShowSaveDialog(false)
+      setActiveScreen(newScreen.id)
+    } catch (err) {
+      console.error(err)
+      alert("Failed to save screen. Ensure your database is running.")
+    } finally {
+      setIsSaving(false)
+    }
   }
 
-  const deleteScreen = (id: string) => {
-    setSavedScreens(savedScreens.filter((s) => s.id !== id))
-    if (activeScreen === id) setActiveScreen(null)
+  const handleDeleteScreen = async (id: string) => {
+    try {
+      await deleteScreen(id)
+      setSavedScreens(savedScreens.filter((s) => s.id !== id))
+      if (activeScreen === id) setActiveScreen(null)
+    } catch (err) {
+      console.error(err)
+      alert("Failed to delete screen.")
+    }
+  }
+
+  const autoGenerateName = () => {
+    const hasGap = conditions.find(c => c.metric === 'gapScore' && c.operator === 'gte' && parseInt(c.value) > 70)
+    const hasActivity = conditions.find(c => c.metric === 'activityScore' && c.operator === 'gte')
+    const hasAnalyst = conditions.find(c => c.metric === 'analystCount' && c.operator === 'lte')
+    
+    let genName = "Custom Alpha Screen"
+    if (hasGap && hasAnalyst) genName = "Deep Value Hidden Gems"
+    else if (hasActivity && hasGap) genName = "High Momentum Alpha"
+    else if (hasGap) genName = "High Gap Potential"
+    
+    setNewScreenName(genName)
+    setNewScreenDesc(`Screening for stocks with ${conditions.map(c => `${c.metric} ${c.operator} ${c.value}`).join(' AND ')}.`)
+    setNewScreenTags("Alpha, Quant, Strategy")
   }
 
   const duplicateScreen = (screen: SavedScreen) => {
-    const newScreen: SavedScreen = {
-      id: Date.now().toString(),
-      name: `${screen.name} (Copy)`,
-      conditions: [...screen.conditions],
-    }
-    setSavedScreens([...savedScreens, newScreen])
+    setNewScreenName(`${screen.name} (Copy)`)
+    setNewScreenDesc(screen.description || "")
+    setNewScreenTags(screen.tags?.join(", ") || "")
+    setConditions([...screen.conditions])
+    setShowSaveDialog(true)
   }
 
   const filteredStocks = useMemo(() => {
@@ -259,64 +294,109 @@ export default function ScreenerPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         {/* Saved Screens Sidebar */}
-        <div className="lg:col-span-1">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base">Saved Screens</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {savedScreens.map((screen) => (
-                <div
-                  key={screen.id}
-                  className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors ${
-                    activeScreen === screen.id
-                      ? "bg-primary/10 border border-primary/30"
-                      : "hover:bg-secondary"
-                  }`}
-                  onClick={() => loadScreen(screen)}
-                >
-                  <span className="text-sm font-medium truncate">{screen.name}</span>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <MoreHorizontal className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => duplicateScreen(screen)}>
-                        <Copy className="h-4 w-4 mr-2" />
-                        Duplicate
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() => deleteScreen(screen.id)}
-                        className="text-destructive"
-                      >
-                        <Trash2 className="h-4 w-4 mr-2" />
-                        Delete
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              ))}
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full mt-4 bg-transparent"
-                onClick={() => {
-                  setConditions([{ id: "1", metric: "gapScore", operator: "gte", value: "50" }])
-                  setActiveScreen(null)
-                }}
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                New Screen
-              </Button>
-            </CardContent>
-          </Card>
+        <div className="lg:col-span-1 flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-semibold tracking-tight">Saved Screens</h2>
+            <Button
+              variant="default"
+              size="icon"
+              className="h-8 w-8 rounded-full shadow-lg shadow-primary/20"
+              onClick={() => {
+                setConditions([{ id: "1", metric: "gapScore", operator: "gte", value: "70" }])
+                setActiveScreen(null)
+              }}
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+          </div>
+          <div className="space-y-3">
+            {savedScreens.length === 0 ? (
+              <div className="p-8 text-center border border-dashed border-border rounded-xl bg-card/50">
+                <p className="text-sm text-muted-foreground">No saved screens yet.</p>
+              </div>
+            ) : (
+              savedScreens.map((screen) => {
+                const sparklineData = Array.from({ length: 15 }, () => 40 + Math.random() * 60)
+                
+                return (
+                  <Card
+                    key={screen.id}
+                    className={`cursor-pointer transition-all duration-300 overflow-hidden group ${
+                      activeScreen === screen.id
+                        ? "border-primary/50 bg-primary/5 shadow-[0_0_15px_rgba(124,58,237,0.1)] ring-1 ring-primary/20"
+                        : "hover:border-primary/30 hover:bg-card/80"
+                    }`}
+                    onClick={() => loadScreen(screen)}
+                  >
+                    <CardContent className="p-4">
+                      <div className="flex justify-between items-start mb-2">
+                        <div>
+                          <h3 className="font-semibold text-sm truncate pr-2 max-w-[150px]">{screen.name}</h3>
+                          <p className="text-[11px] text-muted-foreground mt-0.5 font-mono">
+                            {screen.created_at ? new Date(screen.created_at).toLocaleDateString() : "Saved"}
+                          </p>
+                        </div>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 -mr-2 opacity-0 group-hover:opacity-100 transition-opacity"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); duplicateScreen(screen); }}>
+                              <Copy className="h-4 w-4 mr-2" />
+                              Duplicate
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={(e) => { e.stopPropagation(); handleDeleteScreen(screen.id); }}
+                              className="text-destructive focus:bg-destructive/10"
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                      
+                      {/* Logic Badges */}
+                      <div className="flex flex-wrap gap-1 mt-3 mb-4">
+                        {screen.conditions?.slice(0, 3).map((cond: any) => (
+                          <Badge key={cond.id} variant="secondary" className="text-[10px] px-1.5 py-0 bg-secondary/50 font-mono tracking-tight font-medium text-foreground/80">
+                            {cond.metric.replace('Score','')} {cond.operator.replace('gte','>=').replace('lte','<=')} {cond.value}
+                          </Badge>
+                        ))}
+                        {screen.conditions?.length > 3 && (
+                          <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-secondary/50 font-mono">
+                            +{screen.conditions.length - 3}
+                          </Badge>
+                        )}
+                      </div>
+
+                      {/* Sparkline Visual - Historical Alpha */}
+                      <div className="pt-3 border-t border-border/50 flex justify-between items-end">
+                        <div className="text-[10px] text-muted-foreground font-mono uppercase tracking-wider">
+                          <Activity className="h-3 w-3 inline mr-1 text-primary/70 mb-0.5" /> 
+                          Backtest
+                        </div>
+                        <div className="w-16 h-6 opacity-80 mix-blend-screen">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <LineChart data={sparklineData.map((val, i) => ({ val, i }))}>
+                              <Line type="monotone" dataKey="val" stroke="hsl(var(--primary))" strokeWidth={1.5} dot={false} isAnimationActive={false} />
+                            </LineChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )
+              })
+            )}
+          </div>
         </div>
 
         {/* Main Content */}
@@ -402,31 +482,81 @@ export default function ScreenerPage() {
                   Add Condition
                 </Button>
 
-                {showSaveDialog ? (
-                  <div className="flex items-center gap-2">
-                    <Input
-                      placeholder="Screen name..."
-                      value={newScreenName}
-                      onChange={(e) => setNewScreenName(e.target.value)}
-                      className="w-40"
-                    />
-                    <Button size="sm" onClick={saveScreen}>
-                      Save
+                <Dialog open={showSaveDialog} onOpenChange={setShowSaveDialog}>
+                  <DialogTrigger asChild>
+                    <Button variant="outline" size="sm" className="bg-primary/5 hover:bg-primary/10 border-primary/20 text-primary transition-colors">
+                      <Save className="h-4 w-4 mr-2" />
+                      Save Screen
                     </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setShowSaveDialog(false)}
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                ) : (
-                  <Button variant="outline" size="sm" onClick={() => setShowSaveDialog(true)}>
-                    <Save className="h-4 w-4 mr-2" />
-                    Save Screen
-                  </Button>
-                )}
+                  </DialogTrigger>
+                  
+                  {/* Spotlight Overlay */}
+                  <div className={`fixed inset-0 z-[49] bg-background/80 backdrop-blur-xl transition-opacity duration-300 pointer-events-none ${showSaveDialog ? 'opacity-100' : 'opacity-0'}`} />
+                  
+                  <DialogContent className="sm:max-w-[500px] border-border/40 bg-card/60 backdrop-blur-2xl shadow-[0_0_50px_rgba(124,58,237,0.15)] p-0 overflow-hidden sm:rounded-2xl z-50">
+                    <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-cyan/10 pointer-events-none" />
+                    <div className="p-6 relative z-10">
+                      <DialogHeader className="mb-6">
+                        <DialogTitle className="text-2xl font-bold tracking-tight">Save Strategy Screen</DialogTitle>
+                        <DialogDescription className="text-sm text-muted-foreground pt-2">
+                          Save these screening parameters to your dashboard. We'll track historical alpha for this strategy.
+                        </DialogDescription>
+                      </DialogHeader>
+
+                      <div className="space-y-5">
+                        <div className="flex items-center justify-between pb-2">
+                          <Button variant="secondary" size="sm" onClick={autoGenerateName} className="w-full bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20">
+                            <Wand2 className="h-4 w-4 mr-2" />
+                            Auto-Generate Intelligence
+                          </Button>
+                        </div>
+                        
+                        <div className="space-y-2">
+                          <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground ml-1">Core Name</label>
+                          <Input
+                            placeholder="e.g. Deep Value Hidden Gems"
+                            value={newScreenName}
+                            onChange={(e) => setNewScreenName(e.target.value)}
+                            className="bg-background/50 border-border/50 text-base py-5"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground ml-1">Strategy Notes</label>
+                          <Textarea
+                            placeholder="What marks this strategy? (Optional)"
+                            value={newScreenDesc}
+                            onChange={(e) => setNewScreenDesc(e.target.value)}
+                            className="bg-background/50 border-border/50 resize-none h-24"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground ml-1">Quant Tags</label>
+                          <Input
+                            placeholder="Value, Momentum, Small-Cap..."
+                            value={newScreenTags}
+                            onChange={(e) => setNewScreenTags(e.target.value)}
+                            className="bg-background/50 border-border/50"
+                          />
+                        </div>
+                      </div>
+
+                      <DialogFooter className="mt-8 pt-4 border-t border-border/30 gap-2 sm:gap-0">
+                        <Button variant="ghost" onClick={() => setShowSaveDialog(false)}>
+                          Cancel
+                        </Button>
+                        <Button
+                          onClick={handleSaveScreen}
+                          disabled={isSaving || !newScreenName.trim()}
+                          className="bg-primary hover:bg-primary/90 text-primary-foreground min-w-[120px]"
+                        >
+                          {isSaving ? "Initializing..." : "Save Strategy"}
+                        </Button>
+                      </DialogFooter>
+                    </div>
+                  </DialogContent>
+                </Dialog>
               </div>
             </CardContent>
           </Card>
@@ -523,9 +653,6 @@ export default function ScreenerPage() {
                           </td>
                           <td className="py-3 px-4 text-right">
                             <div className="flex items-center justify-end gap-1">
-                              <Button variant="ghost" size="icon" className="h-8 w-8">
-                                <Star className="h-4 w-4" />
-                              </Button>
                               <Button variant="ghost" size="sm" asChild>
                                 <Link href={`/stock/${stock.ticker}`}>View</Link>
                               </Button>

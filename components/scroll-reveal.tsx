@@ -8,6 +8,7 @@ interface ScrollRevealProps {
   delay?: number
   direction?: "up" | "down" | "left" | "right"
   duration?: number
+  className?: string
 }
 
 export function ScrollReveal({
@@ -15,6 +16,7 @@ export function ScrollReveal({
   delay = 0,
   direction = "up",
   duration = 0.6,
+  className,
 }: ScrollRevealProps) {
   const ref = useRef(null)
   const isInView = useInView(ref, { once: true, amount: 0.2 })
@@ -35,6 +37,7 @@ export function ScrollReveal({
   return (
     <motion.div
       ref={ref}
+      className={className}
       initial={initialVariant[direction]}
       animate={isInView ? finalVariant : initialVariant[direction]}
       transition={{ duration, delay, ease: "easeOut" }}
@@ -45,7 +48,7 @@ export function ScrollReveal({
 }
 
 interface ScrollRevealContainerProps {
-  children: ReactNode
+  children: ReactNode | ((variants: any) => ReactNode)
   staggerDelay?: number
 }
 

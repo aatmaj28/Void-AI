@@ -23,6 +23,7 @@ import {
   Settings,
   Key,
   LogOut,
+  Coins,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -31,8 +32,11 @@ import { Label } from "@/components/ui/label"
 import { Logo } from "@/components/logo"
 import { Footer } from "@/components/footer"
 import { useUser } from "@/lib/user-context"
-import { AnimatedStepper } from "@/components/animated-stepper"
+import { fetchOpportunities, type Opportunity } from "@/lib/opportunities"
+import { StickyScrollStepper } from "@/components/sticky-scroll-stepper"
 import { ScrollReveal, ScrollRevealContainer } from "@/components/scroll-reveal"
+import { MagicCard } from "@/components/magic-card"
+import { cn } from "@/lib/utils"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -42,6 +46,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { useRouter } from "next/navigation"
 import { toast } from "@/hooks/use-toast"
+import { ConstellationBackground } from "@/components/constellation-bg"
 
 const features = [
   {
@@ -108,7 +113,7 @@ const steps = [
 // 3D Globe Component
 function MarketGlobe() {
   const meshRef = useRef<THREE.Mesh>(null)
-  
+
   useFrame((state: any) => {
     if (meshRef.current) {
       meshRef.current.rotation.y += 0.002
@@ -122,7 +127,7 @@ function MarketGlobe() {
       const theta = Math.random() * Math.PI * 2
       const phi = Math.acos(Math.random() * 2 - 1)
       const radius = 2.1
-      
+
       points.push(
         radius * Math.sin(phi) * Math.cos(theta),
         radius * Math.sin(phi) * Math.sin(theta),
@@ -159,24 +164,24 @@ function MarketGlobe() {
 function VoidParticleSystem({ mousePosition }: { mousePosition: { x: number; y: number } }) {
   const pointsRef = useRef<THREE.Points>(null)
   const originalPositions = useRef<Float32Array | null>(null)
-  
+
   const particles = useMemo(() => {
     const positions = new Float32Array(3000)
     const colors = new Float32Array(3000)
-    
+
     for (let i = 0; i < 1000; i++) {
       const i3 = i * 3
       positions[i3] = (Math.random() - 0.5) * 10
       positions[i3 + 1] = (Math.random() - 0.5) * 10
       positions[i3 + 2] = (Math.random() - 0.5) * 10
-      
+
       // Create voids (empty spaces) by clustering particles
       const isVoid = Math.random() > 0.7
       colors[i3] = isVoid ? 0.1 : 0.2
       colors[i3 + 1] = isVoid ? 0.8 : 0.6
       colors[i3 + 2] = isVoid ? 1.0 : 0.9
     }
-    
+
     originalPositions.current = positions.slice()
     return { positions, colors }
   }, [])
@@ -184,32 +189,32 @@ function VoidParticleSystem({ mousePosition }: { mousePosition: { x: number; y: 
   useFrame((state: any) => {
     if (pointsRef.current && originalPositions.current) {
       const positions = pointsRef.current.geometry.attributes.position.array as Float32Array
-      
+
       // Mouse influence
       const mouseX = mousePosition.x * 5
       const mouseY = -mousePosition.y * 5
-      
+
       for (let i = 0; i < positions.length; i += 3) {
         const originalX = originalPositions.current[i]
         const originalY = originalPositions.current[i + 1]
         const originalZ = originalPositions.current[i + 2]
-        
+
         // Calculate distance from mouse position
         const dx = originalX - mouseX
         const dy = originalY - mouseY
         const distance = Math.sqrt(dx * dx + dy * dy)
-        
+
         // Apply mouse repulsion effect
         const force = Math.max(0, 1 - distance / 3)
         const repulsion = force * 0.5
-        
+
         positions[i] = originalX + dx * repulsion
         positions[i + 1] = originalY + dy * repulsion
         positions[i + 2] = originalZ
       }
-      
+
       pointsRef.current.geometry.attributes.position.needsUpdate = true
-      
+
       // Gentle rotation
       pointsRef.current.rotation.x = state.clock.elapsedTime * 0.05
       pointsRef.current.rotation.y = state.clock.elapsedTime * 0.03
@@ -409,6 +414,16 @@ export default function LandingPage() {
   const [displayedLength, setDisplayedLength] = useState(0)
   const [phase, setPhase] = useState<"typing" | "hold" | "deleting" | "pause">("typing")
   const [showCursor, setShowCursor] = useState(true)
+  const [opportunities, setOpportunities] = useState<Opportunity[]>([])
+  const [isOpportunitiesLoading, setIsOpportunitiesLoading] = useState(true)
+
+  useEffect(() => {
+    fetchOpportunities()
+      .then(setOpportunities)
+      .catch((e) => console.error("Failed to fetch opportunities:", e))
+      .finally(() => setIsOpportunitiesLoading(false))
+  }, [])
+
   const typewriterRef = useRef<{ phase: typeof phase; headlineIndex: number; startTime: number; holdUntil: number }>({
     phase: "typing",
     headlineIndex: 0,
@@ -588,6 +603,12 @@ export default function LandingPage() {
                       </Link>
                     </DropdownMenuItem>
                     <DropdownMenuItem asChild>
+                      <Link href="/crypto" className="cursor-pointer">
+                        <Coins className="mr-2 h-4 w-4" />
+                        Crypto
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
                       <Link href="/dashboard" className="cursor-pointer">
                         <Settings className="mr-2 h-4 w-4" />
                         Dashboard
@@ -619,7 +640,7 @@ export default function LandingPage() {
       </header>
 
       {/* Hero Section - transition for smooth boundaries */}
-      <section className="relative flex-1 flex items-center justify-center py-20 md:py-32 overflow-hidden transition-[min-height,padding] duration-300 ease-out">
+      <section className="relative min-h-[calc(100vh-4rem)] w-full flex items-center justify-center py-10 overflow-hidden transition-[min-height,padding] duration-300 ease-out">
         {/* Particle System Visualization with Mouse Following */}
         <div className="absolute inset-0 pointer-events-none">
           <Canvas camera={{ position: [0, 0, 8], fov: 75 }}>
@@ -627,7 +648,7 @@ export default function LandingPage() {
             <VoidParticleSystem mousePosition={mousePosition} />
           </Canvas>
         </div>
-        
+
         <AnimatedBackground />
         <FloatingCards />
         <div className="container mx-auto px-4 relative z-10">
@@ -670,9 +691,8 @@ export default function LandingPage() {
                       )}
                       {afterHighlight}
                       <span
-                        className={`inline-block w-[3px] h-[0.9em] bg-primary ml-1 align-middle transition-opacity duration-150 ${
-                          showCursor ? "opacity-100" : "opacity-0"
-                        }`}
+                        className={`inline-block w-[3px] h-[0.9em] bg-primary ml-1 align-middle transition-opacity duration-150 ${showCursor ? "opacity-100" : "opacity-0"
+                          }`}
                       />
                     </>
                   )
@@ -714,7 +734,7 @@ export default function LandingPage() {
             <div className="grid grid-cols-3 gap-8 mt-16 max-w-xl mx-auto">
               <div className="text-center">
                 <div className="text-3xl md:text-4xl font-bold text-foreground">
-                  500+
+                  2000+
                 </div>
                 <div className="text-sm text-muted-foreground mt-1">
                   Stocks Tracked
@@ -722,7 +742,7 @@ export default function LandingPage() {
               </div>
               <div className="text-center">
                 <div className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-primary to-cyan bg-clip-text text-transparent">
-                  47
+                  {isOpportunitiesLoading ? "..." : opportunities.filter((o) => o.gapScore >= 60).length}
                 </div>
                 <div className="text-sm text-muted-foreground mt-1">
                   Active Opportunities
@@ -730,7 +750,7 @@ export default function LandingPage() {
               </div>
               <div className="text-center">
                 <div className="text-3xl md:text-4xl font-bold text-foreground">
-                  92%
+                  {isOpportunitiesLoading ? "..." : opportunities.length ? (opportunities.reduce((s, o) => s + o.gapScore, 0) / opportunities.length).toFixed(1) : "—"}
                 </div>
                 <div className="text-sm text-muted-foreground mt-1">
                   Avg Gap Score
@@ -741,10 +761,16 @@ export default function LandingPage() {
         </div>
       </section>
 
-      
-      {/* Features Section */}
-      <section className="py-20 md:py-32 bg-card/50">
-        <div className="container mx-auto px-4">
+
+      {/* Shared Constellation Background Wrapper */}
+      <div className="relative bg-card/20 border-y border-border/30">
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <ConstellationBackground />
+        </div>
+        
+        {/* Features Section */}
+        <section className="py-20 md:py-32 relative z-10">
+          <div className="container mx-auto px-4">
           <ScrollReveal direction="up" duration={0.6}>
             <div className="text-center mb-16">
               <h2 className="text-3xl md:text-4xl font-bold mb-4">
@@ -762,30 +788,36 @@ export default function LandingPage() {
 
           <ScrollRevealContainer staggerDelay={0.08}>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
-              {features.map((feature, index) => (
-                <ScrollReveal key={feature.title} direction="up" delay={index * 0.05}>
-                  <Card
-                    className="p-6 bg-card border-border hover:border-primary/50 transition-all duration-300 hover:shadow-lg hover:shadow-primary/5 hover:-translate-y-1 group h-full flex flex-col"
-                    style={{ animationDelay: `${index * 100}ms` }}
-                  >
-                    <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center mb-4 group-hover:bg-primary/20 transition-colors shrink-0">
-                      <feature.icon className="h-6 w-6 text-primary" />
-                    </div>
-                    <h3 className="text-lg font-semibold mb-2 shrink-0">{feature.title}</h3>
-                    <p className="text-sm text-muted-foreground min-h-[3.5rem]">
-                      {feature.description}
-                    </p>
-                  </Card>
+              {features.map((feature, index) => {
+                const bentoClasses = [
+                  "md:col-span-2 lg:col-span-2 lg:row-span-1",
+                  "md:col-span-1 lg:col-span-1 lg:row-span-2",
+                  "md:col-span-1 lg:col-span-1 lg:row-span-1",
+                  "md:col-span-1 lg:col-span-1 lg:row-span-1",
+                  "md:col-span-1 lg:col-span-2 lg:row-span-1",
+                  "md:col-span-2 lg:col-span-1 lg:row-span-1",
+                ];
+
+                return (
+                <ScrollReveal key={feature.title} direction="up" delay={index * 0.05} className={cn("h-full", bentoClasses[index])}>
+                  <div className="h-full transition-transform duration-500 hover:-translate-y-1">
+                    <MagicCard
+                      title={feature.title}
+                      description={feature.description}
+                      icon={feature.icon}
+                    />
+                  </div>
                 </ScrollReveal>
-              ))}
+                )
+              })}
             </div>
           </ScrollRevealContainer>
         </div>
       </section>
 
-      {/* How It Works Section */}
-      <section className="py-20 md:py-32">
-        <div className="container mx-auto px-4">
+        {/* How It Works Section */}
+        <section className="pt-10 pb-20 md:pt-16 md:pb-32 relative z-10">
+          <div className="container mx-auto px-4">
           <ScrollReveal direction="up" duration={0.6}>
             <div className="text-center mb-16">
               <h2 className="text-3xl md:text-4xl font-bold mb-4">
@@ -798,12 +830,12 @@ export default function LandingPage() {
             </div>
           </ScrollReveal>
 
-          <AnimatedStepper steps={steps} />
+          <StickyScrollStepper steps={steps} />
         </div>
       </section>
 
       {/* CTA + Contact Us Section */}
-      <section className="py-20 md:py-32 bg-gradient-to-br from-primary/10 via-background to-cyan/10">
+      <section className="py-20 md:py-32 relative z-10">
         <div className="container mx-auto px-4">
           <ScrollReveal direction="up" duration={0.6}>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-32 items-start max-w-5xl mx-auto">
@@ -835,6 +867,7 @@ export default function LandingPage() {
           </ScrollReveal>
         </div>
       </section>
+      </div>
 
       <Footer />
 

@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
+import { WatchlistDropdown } from "@/components/watchlist-dropdown"
 import {
   Select,
   SelectContent,
@@ -515,9 +516,7 @@ export default function OpportunitiesPage() {
                       </td>
                       <td className="py-4 px-4 text-right">
                         <div className="flex items-center justify-end gap-1">
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
-                            <Star className="h-4 w-4" />
-                          </Button>
+                          <WatchlistDropdown ticker={stock.ticker} companyName={stock.company} />
                           <Button variant="ghost" size="sm" asChild>
                             <Link href={`/stock/${stock.ticker}`}>View</Link>
                           </Button>
