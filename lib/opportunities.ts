@@ -12,6 +12,7 @@ export type OpportunityRow = {
   current_price: number | null
   price_change_1m: number | null
   avg_volume_20d: number | null
+  volume: number | null
   year_high: number | null
   year_low: number | null
   analyst_count: number
@@ -56,7 +57,7 @@ function rowToOpportunity(row: OpportunityRow): Opportunity {
     price,
     change,
     changePercent: changePct * 100,
-    volume: 0,
+    volume: row.volume ?? 0,
     avgVolume: row.avg_volume_20d ?? 0,
     analystCount: row.analyst_count ?? 0,
     gapScore: Math.round(row.gap_score ?? 0),
