@@ -22,6 +22,7 @@ import {
   X,
   MessageSquare,
   Coins,
+  Briefcase,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -43,6 +44,7 @@ const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/opportunities", label: "Opportunities", icon: TrendingUp },
   { href: "/screener", label: "Screener", icon: Filter },
+  { href: "/portfolio", label: "My Stocks", icon: Briefcase },
   { href: "/explore", label: "Explore & Chat", icon: MessageSquare },
   { href: "/watchlist", label: "Watchlist", icon: Star },
   { href: "/alerts", label: "Alerts", icon: AlertCircle },
