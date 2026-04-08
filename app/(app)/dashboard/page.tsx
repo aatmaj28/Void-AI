@@ -93,16 +93,18 @@ function SummaryCard({
           <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
             <Icon className={`h-5 w-5 ${highlight ? "text-primary" : "text-muted-foreground"}`} />
           </div>
-          <div
-            className={`flex items-center gap-1 text-sm ${trend === "up" ? "text-success" : "text-destructive"}`}
-          >
-            {trend === "up" ? (
-              <ArrowUpRight className="h-4 w-4" />
-            ) : (
-              <ArrowDownRight className="h-4 w-4" />
-            )}
-            {change}
-          </div>
+          {change ? (
+            <div
+              className={`flex items-center gap-1 text-sm ${trend === "up" ? "text-success" : "text-destructive"}`}
+            >
+              {trend === "up" ? (
+                <ArrowUpRight className="h-4 w-4" />
+              ) : (
+                <ArrowDownRight className="h-4 w-4" />
+              )}
+              {change}
+            </div>
+          ) : null}
         </div>
         <div className="mt-4">
           <p className="text-2xl font-bold">{value}</p>
@@ -191,6 +193,17 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null)
   const [recentAlerts, setRecentAlerts] = useState<UserAlert[]>([])
   const [alertsLoading, setAlertsLoading] = useState(false)
+  const [trendData, setTrendData] = useState<{ day: number; date: string; opportunities: number; avgScore: number }[]>([])
+  const [trendLoading, setTrendLoading] = useState(true)
+
+  useEffect(() => {
+    setTrendLoading(true)
+    fetch(`/api/dashboard/history?range=${timeRange}`)
+      .then(r => r.json())
+      .then(setTrendData)
+      .catch(console.error)
+      .finally(() => setTrendLoading(false))
+  }, [timeRange])
 
   useEffect(() => {
     fetchOpportunities()
@@ -225,14 +238,7 @@ export default function DashboardPage() {
     .sort((a, b) => b.gapScore - a.gapScore)
     .slice(0, 8)
 
-  const trendData = React.useMemo(() => {
-    const n = getTrendLength(timeRange)
-    return Array.from({ length: n }, (_, i) => ({
-      day: i + 1,
-      opportunities: Math.floor(35 + Math.random() * 20 + (i / Math.max(n - 1, 1)) * 15),
-      avgScore: 72 + Math.random() * 10,
-    }))
-  }, [timeRange])
+  // trendData is now fetched via API above
 
   const heatmapMatrix = React.useMemo(() => {
     if (!opportunities.length) {
