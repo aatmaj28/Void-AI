@@ -567,7 +567,8 @@ export default function StockDetailPage({ params }: { params: Promise<{ ticker: 
           {/* Analysis exists — render everything */}
           {analysis && (() => {
             // Detect if this is a partial analysis (quick hypothesis only) or full
-            const isPartial = !analysis.bullCase?.points?.length && !analysis.bearCase?.points?.length
+            const isFailed = analysis.confidence === 0 && analysis.hypothesis?.includes("parsing issue")
+            const isPartial = isFailed || (!analysis.bullCase?.points?.length && !analysis.bearCase?.points?.length)
 
             return (
               <>
@@ -590,44 +591,54 @@ export default function StockDetailPage({ params }: { params: Promise<{ ticker: 
                   </div>
                 )}
 
-                {/* Investment Hypothesis */}
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between">
-                    <div>
-                      <CardTitle>Investment Hypothesis</CardTitle>
-                      <p className="text-sm text-muted-foreground mt-1">AI-generated analysis based on coverage gap and market data</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm text-muted-foreground">Confidence:</span>
-                      <Badge
-                        variant="secondary"
-                        className={`font-mono ${analysis.confidence >= 75 ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" :
-                            analysis.confidence >= 50 ? "bg-amber-500/20 text-amber-400 border-amber-500/30" :
-                              "bg-red-500/20 text-red-400 border-red-500/30"
-                          }`}
-                      >
-                        {Math.round(analysis.confidence)}%
-                      </Badge>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-muted-foreground leading-relaxed">{analysis.hypothesis}</p>
-                  </CardContent>
-                </Card>
+                {/* Investment Hypothesis — hide the broken card when analysis failed */}
+                {!isFailed && (
+                  <Card>
+                    <CardHeader className="flex flex-row items-center justify-between">
+                      <div>
+                        <CardTitle>Investment Hypothesis</CardTitle>
+                        <p className="text-sm text-muted-foreground mt-1">AI-generated analysis based on coverage gap and market data</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-muted-foreground">Confidence:</span>
+                        <Badge
+                          variant="secondary"
+                          className={`font-mono ${analysis.confidence >= 75 ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" :
+                              analysis.confidence >= 50 ? "bg-amber-500/20 text-amber-400 border-amber-500/30" :
+                                "bg-red-500/20 text-red-400 border-red-500/30"
+                            }`}
+                        >
+                          {Math.round(analysis.confidence)}%
+                        </Badge>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-muted-foreground leading-relaxed">{analysis.hypothesis}</p>
+                    </CardContent>
+                  </Card>
+                )}
 
-                {/* PARTIAL ANALYSIS — show unlock CTA */}
+                {/* FAILED or PARTIAL ANALYSIS — show regenerate / unlock CTA */}
                 {isPartial && (
-                  <Card className="border-primary/30 bg-primary/5">
+                  <Card className={isFailed ? "border-amber-500/30 bg-amber-500/5" : "border-primary/30 bg-primary/5"}>
                     <CardContent className="pt-6">
                       <div className="flex flex-col items-center text-center space-y-4 py-4">
-                        <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
-                          <Sparkles className="h-6 w-6 text-primary" />
+                        <div className={`h-12 w-12 rounded-full flex items-center justify-center ${isFailed ? "bg-amber-500/10" : "bg-primary/10"}`}>
+                          {isFailed ? (
+                            <RefreshCw className="h-6 w-6 text-amber-400" />
+                          ) : (
+                            <Sparkles className="h-6 w-6 text-primary" />
+                          )}
                         </div>
                         <div>
-                          <h3 className="text-lg font-semibold mb-1">Unlock Full Analysis</h3>
+                          <h3 className="text-lg font-semibold mb-1">
+                            {isFailed ? "Analysis Needs Regeneration" : "Unlock Full Analysis"}
+                          </h3>
                           <p className="text-sm text-muted-foreground max-w-lg">
-                            Want Bull, Base &amp; Bear cases, upcoming catalysts, key risks, and the full AI agent debate?
-                            Generate the complete analysis powered by 5 specialized AI agents.
+                            {isFailed
+                              ? "The previous analysis encountered an issue. Click below to regenerate a fresh analysis with our AI agents."
+                              : <>Want Bull, Base &amp; Bear cases, upcoming catalysts, key risks, and the full AI agent debate? Generate the complete analysis powered by 5 specialized AI agents.</>
+                            }
                           </p>
                         </div>
                         <Button
@@ -638,12 +649,12 @@ export default function StockDetailPage({ params }: { params: Promise<{ ticker: 
                           {analysisLoading ? (
                             <>
                               <div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                              Generating Full Analysis...
+                              {isFailed ? "Regenerating..." : "Generating Full Analysis..."}
                             </>
                           ) : (
                             <>
-                              <Sparkles className="h-4 w-4" />
-                              Generate Full Analysis
+                              {isFailed ? <RefreshCw className="h-4 w-4" /> : <Sparkles className="h-4 w-4" />}
+                              {isFailed ? "Regenerate Analysis" : "Generate Full Analysis"}
                             </>
                           )}
                         </Button>
