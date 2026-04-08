@@ -45,4 +45,6 @@ next-env.d.ts
 
 # Exclude rag-service and docs
 rag-service/
+void-ai-rag-service/
+rag/
 docs/
