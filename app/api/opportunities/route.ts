@@ -13,6 +13,7 @@ export type OpportunityRow = {
   current_price: number | null
   price_change_1m: number | null
   avg_volume_20d: number | null
+  volume: number | null
   year_high: number | null
   year_low: number | null
   analyst_count: number
@@ -53,7 +54,7 @@ export async function GET() {
 
     const [companies, metrics, coverage, scores] = await Promise.all([
       fetchAll("companies", "ticker, name, sector, industry, market_cap"),
-      fetchAll("stock_metrics", "ticker, current_price, price_change_1m, avg_volume_20d, year_high, year_low"),
+      fetchAll("stock_metrics", "ticker, current_price, price_change_1m, avg_volume_20d, year_high, year_low, volume"),
       fetchAll("analyst_coverage", "ticker, analyst_count"),
       fetchAll("coverage_gap_scores", "ticker, gap_score, activity_score, quality_score, coverage_score, opportunity_type"),
     ])
@@ -63,7 +64,7 @@ export async function GET() {
     const scoresByTicker = Object.fromEntries(scores.map((s) => [s.ticker, s]))
 
     const merged: OpportunityRow[] = companies
-      .filter((c) => scoresByTicker[c.ticker])
+      .filter((c) => scoresByTicker[c.ticker] && (metricsByTicker[c.ticker]?.current_price ?? 0) > 0)
       .map((c) => {
         const m = metricsByTicker[c.ticker]
         const cov = coverageByTicker[c.ticker]
@@ -77,6 +78,7 @@ export async function GET() {
           current_price: m?.current_price ?? null,
           price_change_1m: m?.price_change_1m ?? null,
           avg_volume_20d: m?.avg_volume_20d ?? null,
+          volume: m?.volume ?? null,
           year_high: m?.year_high ?? null,
           year_low: m?.year_low ?? null,
           analyst_count: cov?.analyst_count ?? 0,
