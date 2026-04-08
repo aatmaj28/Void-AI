@@ -1,10 +1,9 @@
 "use client"
 
-import React, { useState, use, useEffect, useRef } from "react"
+import React, { useState, use, useEffect, useRef, useCallback } from "react"
 import Link from "next/link"
 import {
   ArrowLeft,
-  Star,
   Download,
   RefreshCw,
   TrendingUp,
@@ -30,13 +29,12 @@ import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Input } from "@/components/ui/input"
 import { formatMarketCap, formatVolume, formatPercent } from "@/lib/mock-data"
-import { sendChatMessage, sendChatMessageStream } from "@/lib/rag-chat"
-import { getAnalysis, generateAnalysis, generateAnalysisStream, type AnalysisData, type StreamingTask } from "@/lib/analysis-api"
+import { sendChatMessageStream } from "@/lib/rag-chat"
+import { getAnalysis, generateAnalysisStream, type AnalysisData, type StreamingTask } from "@/lib/analysis-api"
 import { ChatBubble, ThinkingBubble } from "@/components/chat-bubble"
 import { DebateTranscript } from "@/components/debate-transcript"
+import { WatchlistDropdown } from "@/components/watchlist-dropdown"
 import {
-  LineChart,
-  Line,
   XAxis,
   YAxis,
   Tooltip,
@@ -45,12 +43,7 @@ import {
   Area,
   BarChart,
   Bar,
-  PieChart,
-  Pie,
-  Cell,
 } from "recharts"
-
-const COLORS = ["#7c3aed", "#06b6d4", "#10b981", "#f59e0b", "#ef4444"]
 
 function GapScoreGauge({ score }: { score: number }) {
   const circumference = 2 * Math.PI * 45
@@ -181,6 +174,8 @@ export default function StockDetailPage({ params }: { params: Promise<{ ticker: 
   const [secFilingsError, setSecFilingsError] = useState<string | null>(null)
   const [volumeHistory, setVolumeHistory] = useState<Array<{ date: string; volume: number }>>([])
   const [volumeHistoryLoading, setVolumeHistoryLoading] = useState(false)
+  const [priceHistory, setPriceHistory] = useState<Array<{ date: string; close: number }>>([])
+  const [priceHistoryLoading, setPriceHistoryLoading] = useState(false)
 
   // AI Analysis state
   const [analysis, setAnalysis] = useState<AnalysisData | null>(null)
@@ -235,24 +230,20 @@ export default function StockDetailPage({ params }: { params: Promise<{ ticker: 
   useEffect(() => {
     if (!ticker) return
     setVolumeHistoryLoading(true)
+    setPriceHistoryLoading(true)
     fetch(`/api/stock/${ticker}/history?days=30`)
-      .then((res) => { if (!res.ok) throw new Error("Failed to load volume history"); return res.json() })
-      .then((data: { data?: Array<{ date: string; volume: number }> }) => {
+      .then((res) => { if (!res.ok) throw new Error("Failed to load history"); return res.json() })
+      .then((data: { data?: Array<{ date: string; volume: number; close: number | null }> }) => {
         const list = Array.isArray(data?.data) ? data.data : []
         setVolumeHistory(list.map((d) => ({ date: d.date, volume: Number(d.volume) || 0 })))
+        const closes = list.filter((d) => d.close != null).map((d) => ({ date: d.date, close: Number(d.close) }))
+        setPriceHistory(closes)
       })
-      .catch(() => setVolumeHistory([]))
-      .finally(() => setVolumeHistoryLoading(false))
+      .catch(() => { setVolumeHistory([]); setPriceHistory([]) })
+      .finally(() => { setVolumeHistoryLoading(false); setPriceHistoryLoading(false) })
   }, [ticker])
 
-  // Fetch AI analysis when the analysis tab is selected
-  useEffect(() => {
-    if (activeTab === "analysis" && ticker && !analysis && !analysisLoading) {
-      fetchAnalysis()
-    }
-  }, [activeTab, ticker])
-
-  const fetchAnalysis = async () => {
+  const fetchAnalysis = useCallback(async () => {
     setAnalysisLoading(true)
     setAnalysisError(null)
     try {
@@ -263,7 +254,14 @@ export default function StockDetailPage({ params }: { params: Promise<{ ticker: 
     } finally {
       setAnalysisLoading(false)
     }
-  }
+  }, [ticker])
+
+  // Fetch AI analysis when the analysis tab is selected
+  useEffect(() => {
+    if (activeTab === "analysis" && ticker && !analysis && !analysisLoading) {
+      fetchAnalysis()
+    }
+  }, [activeTab, ticker, analysis, analysisLoading, fetchAnalysis])
 
   const handleGenerateAnalysis = async (force = false) => {
     setAnalysisLoading(true)
@@ -301,9 +299,10 @@ export default function StockDetailPage({ params }: { params: Promise<{ ticker: 
   if (error) return (<div className="container mx-auto px-4 py-8"><div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-destructive">{error}</div><Button asChild className="mt-4"><Link href="/opportunities">Back to Opportunities</Link></Button></div>)
   if (!stock) return (<div className="container mx-auto px-4 py-8"><div className="text-center py-20"><h1 className="text-2xl font-bold mb-2">Stock Not Found</h1><p className="text-muted-foreground mb-4">The stock {ticker} was not found in our database.</p><Button asChild><Link href="/opportunities">Back to Opportunities</Link></Button></div></div>)
 
-  const priceChartData = (stock.priceHistory.length ? stock.priceHistory : [stock.price]).map((p, index) => ({ day: index + 1, price: typeof p === "number" ? p : stock.price }))
-  const coverageData = [{ name: "This Stock", value: stock.analystCount }, { name: "Sector Avg", value: 12 }, { name: "Market Avg", value: 18 }]
-  const ratingsData = [{ name: "Buy", value: 2, color: "#10b981" }, { name: "Hold", value: 1, color: "#f59e0b" }, { name: "Sell", value: 0, color: "#ef4444" }]
+  const priceChartData = priceHistory.length
+    ? priceHistory.map((d, i) => ({ day: i + 1, price: d.close, date: d.date }))
+    : [{ day: 1, price: stock.price, date: "" }]
+  const coverageData = [{ name: "This Stock", value: stock.analystCount }]
 
   const handleSendMessage = async () => {
     if (!chatInput.trim() || chatSending) return
@@ -376,7 +375,7 @@ export default function StockDetailPage({ params }: { params: Promise<{ ticker: 
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" className="gap-2 bg-transparent"><Star className="h-4 w-4" />Add to Watchlist</Button>
+          <WatchlistDropdown ticker={stock.ticker} companyName={stock.company} />
           <Button
             className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
             onClick={() => { setActiveTab("analysis"); handleGenerateAnalysis(false) }}
@@ -424,7 +423,7 @@ export default function StockDetailPage({ params }: { params: Promise<{ ticker: 
                 <div className="w-full mt-6 space-y-3">
                   <ScoreBar label="Coverage Gap" value={stock.gapScore} />
                   <ScoreBar label="Activity Level" value={stock.activityScore} />
-                  <ScoreBar label="Volatility" value={Math.floor(Math.random() * 30 + 40)} />
+                  <ScoreBar label="Volatility" value={Math.min(99, Math.round(stock.activityScore * 0.6 + stock.gapScore * 0.4))} />
                 </div>
               </CardContent>
             </Card>
@@ -433,15 +432,19 @@ export default function StockDetailPage({ params }: { params: Promise<{ ticker: 
             <CardHeader><CardTitle>Price History (30 Days)</CardTitle></CardHeader>
             <CardContent>
               <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={priceChartData}>
-                    <defs><linearGradient id="priceGradient" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#7c3aed" stopOpacity={0.3} /><stop offset="95%" stopColor="#7c3aed" stopOpacity={0} /></linearGradient></defs>
-                    <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: "#a1a1aa", fontSize: 12 }} />
-                    <YAxis axisLine={false} tickLine={false} tick={{ fill: "#a1a1aa", fontSize: 12 }} domain={["auto", "auto"]} tickFormatter={(v) => `$${v.toFixed(0)}`} />
-                    <Tooltip contentStyle={{ backgroundColor: "#141417", border: "1px solid #27272a", borderRadius: "8px" }} formatter={(value: number) => [`$${value.toFixed(2)}`, "Price"]} />
-                    <Area type="monotone" dataKey="price" stroke="#7c3aed" strokeWidth={2} fill="url(#priceGradient)" />
-                  </AreaChart>
-                </ResponsiveContainer>
+                {priceHistoryLoading ? (
+                  <div className="h-full flex items-center justify-center text-muted-foreground">Loading price history…</div>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={priceChartData}>
+                      <defs><linearGradient id="priceGradient" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#7c3aed" stopOpacity={0.3} /><stop offset="95%" stopColor="#7c3aed" stopOpacity={0} /></linearGradient></defs>
+                      <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: "#a1a1aa", fontSize: 12 }} />
+                      <YAxis axisLine={false} tickLine={false} tick={{ fill: "#a1a1aa", fontSize: 12 }} domain={["auto", "auto"]} tickFormatter={(v) => `$${v.toFixed(0)}`} />
+                      <Tooltip contentStyle={{ backgroundColor: "#141417", border: "1px solid #27272a", borderRadius: "8px" }} formatter={(value: number) => [`$${value.toFixed(2)}`, "Price"]} />
+                      <Area type="monotone" dataKey="price" stroke="#7c3aed" strokeWidth={2} fill="url(#priceGradient)" />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -450,11 +453,11 @@ export default function StockDetailPage({ params }: { params: Promise<{ ticker: 
         {/* Coverage Tab */}
         <TabsContent value="coverage" className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <Card><CardHeader><CardTitle>Analyst Count</CardTitle></CardHeader><CardContent className="flex flex-col items-center"><div className="text-5xl font-bold text-primary">{stock.analystCount}</div><p className="text-muted-foreground mt-2">Active Analysts</p></CardContent></Card>
+            <Card><CardHeader><CardTitle>Analyst Count</CardTitle></CardHeader><CardContent className="flex flex-col items-center"><div className="text-5xl font-bold text-primary">{stock.analystCount || "—"}</div><p className="text-muted-foreground mt-2">Active Analysts</p></CardContent></Card>
             <Card><CardHeader><CardTitle>Coverage vs Peers</CardTitle></CardHeader><CardContent><div className="h-48"><ResponsiveContainer width="100%" height="100%"><BarChart data={coverageData} layout="vertical"><XAxis type="number" axisLine={false} tickLine={false} /><YAxis type="category" dataKey="name" axisLine={false} tickLine={false} tick={{ fill: "#a1a1aa", fontSize: 12 }} /><Tooltip contentStyle={{ backgroundColor: "#141417", border: "1px solid #27272a", borderRadius: "8px" }} /><Bar dataKey="value" fill="#7c3aed" radius={[0, 4, 4, 0]} /></BarChart></ResponsiveContainer></div></CardContent></Card>
-            <Card><CardHeader><CardTitle>Analyst Ratings</CardTitle></CardHeader><CardContent><div className="h-48"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={ratingsData} cx="50%" cy="50%" innerRadius={40} outerRadius={60} paddingAngle={5} dataKey="value">{ratingsData.map((entry, index) => (<Cell key={`cell-${index}`} fill={entry.color} />))}</Pie><Tooltip /></PieChart></ResponsiveContainer></div><div className="flex justify-center gap-4 mt-2">{ratingsData.map((item) => (<div key={item.name} className="flex items-center gap-2"><div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }} /><span className="text-sm text-muted-foreground">{item.name}</span></div>))}</div></CardContent></Card>
+            <Card><CardHeader><CardTitle>Analyst Ratings</CardTitle></CardHeader><CardContent><div className="h-48 flex items-center justify-center text-center text-muted-foreground text-sm px-4">Analyst rating breakdown data not yet available for this ticker.</div></CardContent></Card>
           </div>
-          <Card><CardHeader><CardTitle>Price Targets</CardTitle></CardHeader><CardContent><div className="flex items-center justify-between gap-4"><div className="text-center"><p className="text-sm text-muted-foreground">Low</p><p className="text-xl font-mono font-semibold text-destructive">${(stock.price * 0.7).toFixed(2)}</p></div><div className="flex-1 h-2 bg-secondary rounded-full relative"><div className="absolute h-4 w-1 bg-foreground rounded-full -top-1" style={{ left: "30%" }} /><div className="absolute h-4 w-1 bg-primary rounded-full -top-1" style={{ left: "50%" }} /></div><div className="text-center"><p className="text-sm text-muted-foreground">High</p><p className="text-xl font-mono font-semibold text-success">${(stock.price * 1.5).toFixed(2)}</p></div></div><div className="flex justify-center mt-4"><div className="text-center"><p className="text-sm text-muted-foreground">Median Target</p><p className="text-2xl font-mono font-bold">${(stock.price * 1.15).toFixed(2)}</p></div></div></CardContent></Card>
+          <Card><CardHeader><CardTitle>52-Week Price Range</CardTitle></CardHeader><CardContent><div className="flex items-center justify-between gap-4"><div className="text-center"><p className="text-sm text-muted-foreground">52W Low</p><p className="text-xl font-mono font-semibold text-destructive">${stock.low52w.toFixed(2)}</p></div><div className="flex-1 h-2 bg-secondary rounded-full relative mx-4"><div className="absolute h-4 w-1 bg-primary rounded-full -top-1" style={{ left: `${Math.min(95, Math.max(5, ((stock.price - stock.low52w) / (stock.high52w - stock.low52w || 1)) * 100))}%` }} /></div><div className="text-center"><p className="text-sm text-muted-foreground">52W High</p><p className="text-xl font-mono font-semibold text-success">${stock.high52w.toFixed(2)}</p></div></div><div className="flex justify-center mt-4"><div className="text-center"><p className="text-sm text-muted-foreground">Current Price</p><p className="text-2xl font-mono font-bold">${stock.price.toFixed(2)}</p></div></div></CardContent></Card>
         </TabsContent>
 
         {/* Activity Tab */}
