@@ -1,6 +1,7 @@
 "use client"
 
 import { createContext, useContext, useEffect, useState, ReactNode } from "react"
+import { useSession } from "next-auth/react"
 
 interface User {
     email: string
@@ -20,9 +21,22 @@ const UserContext = createContext<UserContextType | undefined>(undefined)
 export function UserProvider({ children }: { children: ReactNode }) {
     const [user, setUserState] = useState<User | null>(null)
     const [isLoading, setIsLoading] = useState(true)
+    const { data: session, status } = useSession()
 
     useEffect(() => {
-        // Load user from localStorage on mount
+        if (status === "loading") return
+
+        // If NextAuth has a session (e.g. Google OAuth), use it
+        if (status === "authenticated" && session?.user) {
+            const email = session.user.email ?? ""
+            const name = session.user.name ?? ""
+            const [firstName, ...rest] = name.split(" ")
+            setUserState({ email, firstName, lastName: rest.join(" ") })
+            setIsLoading(false)
+            return
+        }
+
+        // Otherwise fall back to localStorage (email/password users)
         const storedUser = localStorage.getItem("void_user")
         if (storedUser) {
             try {
@@ -32,7 +46,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
             }
         }
         setIsLoading(false)
-    }, [])
+    }, [status, session])
 
     const setUser = (newUser: User | null) => {
         setUserState(newUser)
