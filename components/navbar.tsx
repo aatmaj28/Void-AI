@@ -242,7 +242,7 @@ export function Navbar() {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="relative">
-                <div className="h-8 w-8 rounded-full bg-gradient-to-br from-primary to-cyan flex items-center justify-center">
+                <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center">
                   <User className="h-4 w-4 text-primary-foreground" />
                 </div>
               </Button>

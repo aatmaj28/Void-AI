@@ -122,7 +122,7 @@ export default function AlertsPage() {
       toast({
         title: "Settings Saved",
         description: "Your alert settings have been saved successfully.",
-        className: "border-primary/50 shadow-[0_0_15px_rgba(168,85,247,0.3)] bg-card",
+        className: "border-primary/50 bg-card",
       })
     } catch (error) {
       console.error("Failed to save settings", error)
