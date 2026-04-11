@@ -48,43 +48,43 @@
 
 /* Void AI Dark Mode (Default) */
 .dark {
-  --background: #0a0a0b;
+  --background: #09090b;
   --foreground: #fafafa;
-  --card: #141417;
+  --card: #0f0f12;
   --card-foreground: #fafafa;
-  --popover: #141417;
+  --popover: #0f0f12;
   --popover-foreground: #fafafa;
   --primary: #7c3aed;
   --primary-foreground: #ffffff;
-  --secondary: #27272a;
+  --secondary: #1c1c1f;
   --secondary-foreground: #fafafa;
-  --muted: #27272a;
+  --muted: #1c1c1f;
   --muted-foreground: #a1a1aa;
-  --accent: #06b6d4;
+  --accent: #7c3aed;
   --accent-foreground: #ffffff;
   --destructive: #ef4444;
   --destructive-foreground: #ffffff;
-  --border: #27272a;
-  --input: #27272a;
+  --border: #1e1e22;
+  --input: #1e1e22;
   --ring: #7c3aed;
   --chart-1: #7c3aed;
-  --chart-2: #06b6d4;
+  --chart-2: #3b82f6;
   --chart-3: #10b981;
   --chart-4: #f59e0b;
   --chart-5: #ef4444;
-  --sidebar: #141417;
+  --sidebar: #0f0f12;
   --sidebar-foreground: #fafafa;
   --sidebar-primary: #7c3aed;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #27272a;
+  --sidebar-accent: #1c1c1f;
   --sidebar-accent-foreground: #fafafa;
-  --sidebar-border: #27272a;
+  --sidebar-border: #1e1e22;
   --sidebar-ring: #7c3aed;
   --success: #10b981;
   --success-foreground: #ffffff;
   --warning: #f59e0b;
   --warning-foreground: #18181b;
-  --cyan: #06b6d4;
+  --cyan: #7c3aed;
   --cyan-foreground: #ffffff;
 }
 

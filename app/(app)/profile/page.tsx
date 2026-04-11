@@ -146,7 +146,7 @@ export default function ProfilePage() {
             <div className="bg-card border border-border rounded-2xl p-8 shadow-lg">
                 {/* User Avatar & Basic Info */}
                 <div className="flex items-center gap-6 mb-8 pb-8 border-b border-border">
-                    <div className="h-20 w-20 rounded-full bg-gradient-to-br from-primary to-cyan flex items-center justify-center">
+                    <div className="h-20 w-20 rounded-full bg-primary flex items-center justify-center">
                         <span className="text-2xl font-bold text-primary-foreground">
                             {user.firstName?.[0]}{user.lastName?.[0]}
                         </span>

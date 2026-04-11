@@ -3,9 +3,6 @@
 import Link from "next/link"
 import { useTheme } from "next-themes"
 import { useState, useEffect, useRef, useMemo } from "react"
-import { Canvas, useFrame } from "@react-three/fiber"
-import { OrbitControls, Sphere, Points, PointMaterial } from "@react-three/drei"
-import * as THREE from "three"
 import {
   Search,
   Brain,
@@ -21,7 +18,6 @@ import {
   Target,
   User,
   Settings,
-  Key,
   LogOut,
   Coins,
 } from "lucide-react"
@@ -33,9 +29,6 @@ import { Logo } from "@/components/logo"
 import { Footer } from "@/components/footer"
 import { useUser } from "@/lib/user-context"
 import { fetchOpportunities, type Opportunity } from "@/lib/opportunities"
-import { StickyScrollStepper } from "@/components/sticky-scroll-stepper"
-import { ScrollReveal, ScrollRevealContainer } from "@/components/scroll-reveal"
-import { MagicCard } from "@/components/magic-card"
 import { cn } from "@/lib/utils"
 import {
   DropdownMenu,
@@ -46,7 +39,6 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { useRouter } from "next/navigation"
 import { toast } from "@/hooks/use-toast"
-import { ConstellationBackground } from "@/components/constellation-bg"
 
 const features = [
   {
@@ -89,162 +81,30 @@ const features = [
 
 const steps = [
   {
+    number: "01",
     icon: Database,
-    title: "INGEST",
-    description: "Aggregate market data, analyst coverage, and trading activity",
+    title: "Ingest",
+    description: "Aggregate market data, analyst coverage, and trading activity across 2,000+ stocks daily.",
   },
   {
+    number: "02",
     icon: Target,
-    title: "SCORE",
-    description: "Calculate coverage gaps and opportunity scores",
+    title: "Score",
+    description: "Calculate coverage gaps and rank opportunities using our proprietary scoring engine.",
   },
   {
+    number: "03",
     icon: Brain,
-    title: "ANALYZE",
-    description: "Generate AI-powered investment hypotheses",
+    title: "Analyze",
+    description: "Generate AI-powered investment hypotheses with ML-optimized confidence scores.",
   },
   {
+    number: "04",
     icon: Sparkles,
-    title: "SURFACE",
-    description: "Present actionable opportunities with full context",
+    title: "Surface",
+    description: "Present actionable opportunities with full context, validated by LLM-as-a-Judge.",
   },
 ]
-
-// 3D Globe Component
-function MarketGlobe() {
-  const meshRef = useRef<THREE.Mesh>(null)
-
-  useFrame((state: any) => {
-    if (meshRef.current) {
-      meshRef.current.rotation.y += 0.002
-      meshRef.current.rotation.x = Math.sin(state.clock.elapsedTime * 0.1) * 0.1
-    }
-  })
-
-  const coverageData = useMemo(() => {
-    const points = []
-    for (let i = 0; i < 100; i++) {
-      const theta = Math.random() * Math.PI * 2
-      const phi = Math.acos(Math.random() * 2 - 1)
-      const radius = 2.1
-
-      points.push(
-        radius * Math.sin(phi) * Math.cos(theta),
-        radius * Math.sin(phi) * Math.sin(theta),
-        radius * Math.cos(phi)
-      )
-    }
-    return new Float32Array(points)
-  }, [])
-
-  return (
-    <group>
-      <Sphere ref={meshRef} args={[2, 64, 64]}>
-        <meshPhongMaterial
-          color="#0a0a0a"
-          wireframe
-          opacity={0.3}
-          transparent
-        />
-      </Sphere>
-      <Points positions={coverageData} stride={3} frustumCulled={false}>
-        <PointMaterial
-          transparent
-          color="#00ff88"
-          size={0.05}
-          sizeAttenuation={true}
-          depthWrite={false}
-        />
-      </Points>
-    </group>
-  )
-}
-
-// Particle System Component with Mouse Following
-function VoidParticleSystem({ mousePosition }: { mousePosition: { x: number; y: number } }) {
-  const pointsRef = useRef<THREE.Points>(null)
-  const originalPositions = useRef<Float32Array | null>(null)
-
-  const particles = useMemo(() => {
-    const positions = new Float32Array(3000)
-    const colors = new Float32Array(3000)
-
-    for (let i = 0; i < 1000; i++) {
-      const i3 = i * 3
-      positions[i3] = (Math.random() - 0.5) * 10
-      positions[i3 + 1] = (Math.random() - 0.5) * 10
-      positions[i3 + 2] = (Math.random() - 0.5) * 10
-
-      // Create voids (empty spaces) by clustering particles
-      const isVoid = Math.random() > 0.7
-      colors[i3] = isVoid ? 0.1 : 0.2
-      colors[i3 + 1] = isVoid ? 0.8 : 0.6
-      colors[i3 + 2] = isVoid ? 1.0 : 0.9
-    }
-
-    originalPositions.current = positions.slice()
-    return { positions, colors }
-  }, [])
-
-  useFrame((state: any) => {
-    if (pointsRef.current && originalPositions.current) {
-      const positions = pointsRef.current.geometry.attributes.position.array as Float32Array
-
-      // Mouse influence
-      const mouseX = mousePosition.x * 5
-      const mouseY = -mousePosition.y * 5
-
-      for (let i = 0; i < positions.length; i += 3) {
-        const originalX = originalPositions.current[i]
-        const originalY = originalPositions.current[i + 1]
-        const originalZ = originalPositions.current[i + 2]
-
-        // Calculate distance from mouse position
-        const dx = originalX - mouseX
-        const dy = originalY - mouseY
-        const distance = Math.sqrt(dx * dx + dy * dy)
-
-        // Apply mouse repulsion effect
-        const force = Math.max(0, 1 - distance / 3)
-        const repulsion = force * 0.5
-
-        positions[i] = originalX + dx * repulsion
-        positions[i + 1] = originalY + dy * repulsion
-        positions[i + 2] = originalZ
-      }
-
-      pointsRef.current.geometry.attributes.position.needsUpdate = true
-
-      // Gentle rotation
-      pointsRef.current.rotation.x = state.clock.elapsedTime * 0.05
-      pointsRef.current.rotation.y = state.clock.elapsedTime * 0.03
-    }
-  })
-
-  return (
-    <Points ref={pointsRef} positions={particles.positions} colors={particles.colors} stride={3} frustumCulled={false}>
-      <PointMaterial
-        transparent
-        vertexColors
-        size={0.02}
-        sizeAttenuation={true}
-        depthWrite={false}
-        blending={THREE.AdditiveBlending}
-      />
-    </Points>
-  )
-}
-
-function AnimatedBackground() {
-  return (
-    <div className="absolute inset-0 overflow-hidden pointer-events-none">
-      <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/20 rounded-full blur-3xl animate-pulse" />
-      <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-cyan/20 rounded-full blur-3xl animate-pulse delay-1000" />
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] border border-primary/10 rounded-full" />
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] border border-cyan/10 rounded-full" />
-    </div>
-  )
-}
 
 function ContactUsBlock() {
   const [name, setName] = useState("")
@@ -285,34 +145,21 @@ function ContactUsBlock() {
     <div className="text-left">
       <h3 className="text-xl font-semibold mb-2">Contact Us</h3>
       <p className="text-sm text-muted-foreground mb-4">
-        Northeastern University, Boston • Spring 2026
+        Northeastern University, Boston &middot; Spring 2026
       </p>
       <div className="flex items-center flex-nowrap gap-x-2 text-sm text-muted-foreground mb-4 shrink-0">
         <a href="mailto:salunke.aa@northeastern.edu" className="text-primary hover:underline whitespace-nowrap shrink-0">salunke.aa@northeastern.edu</a>
-        <span className="text-muted-foreground/70 shrink-0">·</span>
+        <span className="text-muted-foreground/70 shrink-0">&middot;</span>
         <a href="mailto:mahendrakar.v@northeastern.edu" className="text-primary hover:underline whitespace-nowrap shrink-0">mahendrakar.v@northeastern.edu</a>
       </div>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <Label htmlFor="contact-name" className="block mb-1.5">Name</Label>
-          <Input
-            id="contact-name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Your name"
-            required
-          />
+          <Input id="contact-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" required />
         </div>
         <div>
           <Label htmlFor="contact-email" className="block mb-1.5">Email / Contact</Label>
-          <Input
-            id="contact-email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="your@email.com"
-            required
-          />
+          <Input id="contact-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="your@email.com" required />
         </div>
         <div>
           <Label htmlFor="contact-message" className="block mb-1.5">Message</Label>
@@ -327,79 +174,9 @@ function ContactUsBlock() {
           />
         </div>
         <Button type="submit" disabled={status === "sending"} className="gap-2">
-          {status === "sending" ? "Sending…" : "Send"}
+          {status === "sending" ? "Sending..." : "Send"}
         </Button>
       </form>
-    </div>
-  )
-}
-
-function FloatingCards() {
-  const leftCards = [
-    { ticker: "IONQ", change: "+12.4%", type: "positive" as const },
-    { ticker: "BTDR", change: "+8.7%", type: "positive" as const },
-    { ticker: "NVAX", change: "-3.2%", type: "negative" as const },
-  ]
-  const rightCards = [
-    { ticker: "SOFI", change: "+4.2%", type: "positive" as const },
-    { ticker: "MSTR", change: "+6.8%", type: "positive" as const },
-    { ticker: "COIN", change: "+9.3%", type: "positive" as const },
-  ]
-
-  // Triangle: 3 points per side, closer together. Left: top, left-mid, bottom-right. Right: top, right-mid, bottom-left.
-  const leftPositions = [
-    { left: "14%", top: "36%" },   // top
-    { left: "6%", top: "50%" },    // left
-    { left: "20%", top: "60%" },   // bottom-right
-  ]
-  const rightPositions = [
-    { right: "14%", top: "36%" },  // top
-    { right: "6%", top: "50%" },   // right
-    { right: "20%", top: "60%" },  // bottom-left
-  ]
-
-  const cardClass = "absolute bg-card/80 backdrop-blur-sm border border-border rounded-lg pl-4 pr-4 py-3 shadow-lg animate-roam"
-
-  return (
-    <div className="absolute inset-0 overflow-hidden pointer-events-none hidden lg:block">
-      {/* Left side: 3 cards in triangle, each doing roaming motion */}
-      {leftCards.map((card, i) => (
-        <div
-          key={`left-${card.ticker}`}
-          className={cardClass}
-          style={{
-            ...leftPositions[i],
-            animationDelay: `${i * 1.2}s`,
-          }}
-        >
-          <div className="flex items-center gap-3">
-            <div className="text-sm font-mono font-semibold">{card.ticker}</div>
-            <div className={`text-sm font-mono ${card.type === "positive" ? "text-success" : "text-destructive"}`}>
-              {card.change}
-            </div>
-          </div>
-          <div className="text-xs text-muted-foreground mt-1">Gap Score: 89</div>
-        </div>
-      ))}
-      {/* Right side: 3 cards in triangle, each doing roaming motion */}
-      {rightCards.map((card, i) => (
-        <div
-          key={`right-${card.ticker}`}
-          className={cardClass}
-          style={{
-            ...rightPositions[i],
-            animationDelay: `${0.6 + i * 1.2}s`,
-          }}
-        >
-          <div className="flex items-center gap-3">
-            <div className="text-sm font-mono font-semibold">{card.ticker}</div>
-            <div className={`text-sm font-mono ${card.type === "positive" ? "text-success" : "text-destructive"}`}>
-              {card.change}
-            </div>
-          </div>
-          <div className="text-xs text-muted-foreground mt-1">Gap Score: 89</div>
-        </div>
-      ))}
     </div>
   )
 }
@@ -409,7 +186,6 @@ export default function LandingPage() {
   const [mounted, setMounted] = useState(false)
   const { user, logout, isLoading } = useUser()
   const router = useRouter()
-  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 })
   const [headlineIndex, setHeadlineIndex] = useState(0)
   const [displayedLength, setDisplayedLength] = useState(0)
   const [phase, setPhase] = useState<"typing" | "hold" | "deleting" | "pause">("typing")
@@ -439,23 +215,8 @@ export default function LandingPage() {
 
   useEffect(() => {
     setMounted(true)
-
-    // Mouse tracking
-    const handleMouseMove = (e: MouseEvent) => {
-      setMousePosition({
-        x: (e.clientX / window.innerWidth) * 2 - 1,
-        y: (e.clientY / window.innerHeight) * 2 - 1,
-      })
-    }
-
-    window.addEventListener("mousemove", handleMouseMove)
-
-    return () => {
-      window.removeEventListener("mousemove", handleMouseMove)
-    }
   }, [])
 
-  // Cursor blink effect
   useEffect(() => {
     const cursorInterval = setInterval(() => {
       setShowCursor((prev) => !prev)
@@ -463,7 +224,6 @@ export default function LandingPage() {
     return () => clearInterval(cursorInterval)
   }, [])
 
-  // Smooth typewriter: time-based with requestAnimationFrame
   useEffect(() => {
     const typingSpeedMs = 45
     const deletingSpeedMs = 25
@@ -537,7 +297,6 @@ export default function LandingPage() {
     return () => cancelAnimationFrame(rafId)
   }, [phase, headlineIndex, headlines])
 
-  // Sync displayedLength when headline index changes (after pause)
   useEffect(() => {
     if (phase === "typing" && displayedLength === 0) {
       typewriterRef.current.startTime = performance.now()
@@ -554,7 +313,7 @@ export default function LandingPage() {
   return (
     <div className="min-h-screen flex flex-col bg-background">
       {/* Navigation */}
-      <header className="sticky top-0 z-50 w-full border-b border-border bg-background/80 backdrop-blur-md">
+      <header className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur-sm">
         <div className="container mx-auto flex h-16 items-center justify-between px-4">
           <Logo />
           <div className="flex items-center gap-4">
@@ -574,7 +333,6 @@ export default function LandingPage() {
               )}
             </Button>
 
-            {/* Conditionally show Sign In/Get Started or User Avatar */}
             {!isLoading && user ? (
               <>
                 <Button asChild variant="ghost">
@@ -583,7 +341,7 @@ export default function LandingPage() {
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" size="icon" className="relative">
-                      <div className="h-8 w-8 rounded-full bg-gradient-to-br from-primary to-cyan flex items-center justify-center">
+                      <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center">
                         <span className="text-xs font-bold text-primary-foreground">
                           {user.firstName?.[0]}{user.lastName?.[0]}
                         </span>
@@ -598,29 +356,22 @@ export default function LandingPage() {
                     <DropdownMenuSeparator />
                     <DropdownMenuItem asChild>
                       <Link href="/profile" className="cursor-pointer">
-                        <User className="mr-2 h-4 w-4" />
-                        Profile
+                        <User className="mr-2 h-4 w-4" />Profile
                       </Link>
                     </DropdownMenuItem>
                     <DropdownMenuItem asChild>
                       <Link href="/crypto" className="cursor-pointer">
-                        <Coins className="mr-2 h-4 w-4" />
-                        Crypto
+                        <Coins className="mr-2 h-4 w-4" />Crypto
                       </Link>
                     </DropdownMenuItem>
                     <DropdownMenuItem asChild>
                       <Link href="/dashboard" className="cursor-pointer">
-                        <Settings className="mr-2 h-4 w-4" />
-                        Dashboard
+                        <Settings className="mr-2 h-4 w-4" />Dashboard
                       </Link>
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      className="cursor-pointer text-destructive focus:text-destructive"
-                      onClick={handleLogout}
-                    >
-                      <LogOut className="mr-2 h-4 w-4" />
-                      Logout
+                    <DropdownMenuItem className="cursor-pointer text-destructive focus:text-destructive" onClick={handleLogout}>
+                      <LogOut className="mr-2 h-4 w-4" />Logout
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -639,32 +390,18 @@ export default function LandingPage() {
         </div>
       </header>
 
-      {/* Hero Section - transition for smooth boundaries */}
-      <section className="relative min-h-[calc(100vh-4rem)] w-full flex items-center justify-center py-10 overflow-hidden transition-[min-height,padding] duration-300 ease-out">
-        {/* Particle System Visualization with Mouse Following */}
-        <div className="absolute inset-0 pointer-events-none">
-          <Canvas camera={{ position: [0, 0, 8], fov: 75 }}>
-            <ambientLight intensity={0.3} />
-            <VoidParticleSystem mousePosition={mousePosition} />
-          </Canvas>
-        </div>
-
-        <AnimatedBackground />
-        <FloatingCards />
+      {/* Hero Section */}
+      <section className="relative min-h-[calc(100vh-4rem)] w-full flex items-center justify-center py-20 overflow-hidden">
         <div className="container mx-auto px-4 relative z-10">
           <div className="max-w-4xl mx-auto text-center">
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-border bg-card/50 backdrop-blur-sm mb-8">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-primary" />
-              </span>
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-border bg-card mb-8">
+              <span className="inline-flex rounded-full h-2 w-2 bg-success" />
               <span className="text-sm text-muted-foreground">
-                Where Wall Street Isn't Looking
+                Where Wall Street Isn&apos;t Looking
               </span>
             </div>
 
-            {/* Fixed min-height so section doesn't expand/contract when headline wraps to 2 lines */}
-            <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold tracking-tight mb-6 text-balance relative min-h-[2.35em] flex items-center justify-center">
+            <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold tracking-tight mb-6 text-foreground text-balance relative min-h-[2.35em] flex items-center justify-center">
               <span className="inline-block">
                 {(() => {
                   const text = displayedText
@@ -685,14 +422,13 @@ export default function LandingPage() {
                     <>
                       {beforeHighlight}
                       {highlightedPart && (
-                        <span className="bg-gradient-to-r from-primary to-cyan bg-clip-text text-transparent">
+                        <span className="text-primary">
                           {highlightedPart}
                         </span>
                       )}
                       {afterHighlight}
                       <span
-                        className={`inline-block w-[3px] h-[0.9em] bg-primary ml-1 align-middle transition-opacity duration-150 ${showCursor ? "opacity-100" : "opacity-0"
-                          }`}
+                        className={`inline-block w-[3px] h-[0.9em] bg-primary ml-1 align-middle transition-opacity duration-150 ${showCursor ? "opacity-100" : "opacity-0"}`}
                       />
                     </>
                   )
@@ -706,20 +442,14 @@ export default function LandingPage() {
             </p>
 
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-              {/* Show Get Started only when not logged in */}
               {!user && (
-                <Button
-                  size="lg"
-                  asChild
-                  className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2 px-8"
-                >
+                <Button size="lg" asChild className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2 px-8">
                   <Link href="/register">
                     Get Started
                     <ArrowRight className="h-4 w-4" />
                   </Link>
                 </Button>
               )}
-              {/* Show View Opportunities only when logged in */}
               {user && (
                 <Button size="lg" asChild className="gap-2 px-8 bg-primary hover:bg-primary/90 text-primary-foreground">
                   <Link href="/dashboard">
@@ -736,162 +466,110 @@ export default function LandingPage() {
                 <div className="text-3xl md:text-4xl font-bold text-foreground">
                   2000+
                 </div>
-                <div className="text-sm text-muted-foreground mt-1">
-                  Stocks Tracked
-                </div>
+                <div className="text-sm text-muted-foreground mt-1">Stocks Tracked</div>
               </div>
               <div className="text-center">
-                <div className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-primary to-cyan bg-clip-text text-transparent">
+                <div className="text-3xl md:text-4xl font-bold text-primary">
                   {isOpportunitiesLoading ? "..." : opportunities.filter((o) => o.gapScore >= 60).length}
                 </div>
-                <div className="text-sm text-muted-foreground mt-1">
-                  Active Opportunities
-                </div>
+                <div className="text-sm text-muted-foreground mt-1">Active Opportunities</div>
               </div>
               <div className="text-center">
                 <div className="text-3xl md:text-4xl font-bold text-foreground">
-                  {isOpportunitiesLoading ? "..." : opportunities.length ? (opportunities.reduce((s, o) => s + o.gapScore, 0) / opportunities.length).toFixed(1) : "—"}
+                  {isOpportunitiesLoading ? "..." : opportunities.length ? (opportunities.reduce((s, o) => s + o.gapScore, 0) / opportunities.length).toFixed(1) : "\u2014"}
                 </div>
-                <div className="text-sm text-muted-foreground mt-1">
-                  Avg Gap Score
-                </div>
+                <div className="text-sm text-muted-foreground mt-1">Avg Gap Score</div>
               </div>
             </div>
           </div>
         </div>
       </section>
 
+      {/* Features Section */}
+      <section className="py-20 md:py-32 border-t border-border">
+        <div className="container mx-auto px-4">
+          <div className="text-center mb-16">
+            <h2 className="text-3xl md:text-4xl font-bold mb-4">
+              Powerful Features for Alpha Generation
+            </h2>
+            <p className="text-muted-foreground max-w-2xl mx-auto">
+              Our platform combines advanced analytics with AI to surface
+              investment opportunities that others miss.
+            </p>
+          </div>
 
-      {/* Shared Constellation Background Wrapper */}
-      <div className="relative bg-card/20 border-y border-border/30">
-        <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <ConstellationBackground />
-        </div>
-        
-        {/* Features Section */}
-        <section className="py-20 md:py-32 relative z-10">
-          <div className="container mx-auto px-4">
-          <ScrollReveal direction="up" duration={0.6}>
-            <div className="text-center mb-16">
-              <h2 className="text-3xl md:text-4xl font-bold mb-4">
-                Powerful Features for{" "}
-                <span className="bg-gradient-to-r from-primary to-cyan bg-clip-text text-transparent">
-                  Alpha Generation
-                </span>
-              </h2>
-              <p className="text-muted-foreground max-w-2xl mx-auto">
-                Our platform combines advanced analytics with AI to surface
-                investment opportunities that others miss.
-              </p>
-            </div>
-          </ScrollReveal>
-
-          <ScrollRevealContainer staggerDelay={0.08}>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
-              {features.map((feature, index) => {
-                const bentoClasses = [
-                  "md:col-span-2 lg:col-span-2 lg:row-span-1",
-                  "md:col-span-1 lg:col-span-1 lg:row-span-2",
-                  "md:col-span-1 lg:col-span-1 lg:row-span-1",
-                  "md:col-span-1 lg:col-span-1 lg:row-span-1",
-                  "md:col-span-1 lg:col-span-2 lg:row-span-1",
-                  "md:col-span-2 lg:col-span-1 lg:row-span-1",
-                ];
-
-                return (
-                <ScrollReveal key={feature.title} direction="up" delay={index * 0.05} className={cn("h-full", bentoClasses[index])}>
-                  <div className="h-full transition-transform duration-500 hover:-translate-y-1">
-                    <MagicCard
-                      title={feature.title}
-                      description={feature.description}
-                      icon={feature.icon}
-                    />
-                  </div>
-                </ScrollReveal>
-                )
-              })}
-            </div>
-          </ScrollRevealContainer>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
+            {features.map((feature) => (
+              <Card key={feature.title} className="p-6 border-border hover:border-primary/20 transition-colors">
+                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center mb-4">
+                  <feature.icon className="h-5 w-5 text-primary" />
+                </div>
+                <h3 className="text-lg font-semibold mb-2">{feature.title}</h3>
+                <p className="text-sm text-muted-foreground leading-relaxed">{feature.description}</p>
+              </Card>
+            ))}
+          </div>
         </div>
       </section>
 
-        {/* How It Works Section */}
-        <section className="pt-10 pb-20 md:pt-16 md:pb-32 relative z-10">
-          <div className="container mx-auto px-4">
-          <ScrollReveal direction="up" duration={0.6}>
-            <div className="text-center mb-16">
-              <h2 className="text-3xl md:text-4xl font-bold mb-4">
-                How It Works
-              </h2>
-              <p className="text-muted-foreground max-w-2xl mx-auto">
-                Our four-step process turns raw market data into actionable
-                investment insights.
-              </p>
-            </div>
-          </ScrollReveal>
+      {/* How It Works Section */}
+      <section className="py-20 md:py-32 border-t border-border bg-card/50">
+        <div className="container mx-auto px-4">
+          <div className="text-center mb-16">
+            <h2 className="text-3xl md:text-4xl font-bold mb-4">How It Works</h2>
+            <p className="text-muted-foreground max-w-2xl mx-auto">
+              Our four-step process turns raw market data into actionable
+              investment insights.
+            </p>
+          </div>
 
-          <StickyScrollStepper steps={steps} />
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-8 max-w-5xl mx-auto">
+            {steps.map((step, index) => (
+              <div key={step.title} className="text-center">
+                <div className="text-xs font-mono text-muted-foreground mb-3 tracking-widest">{step.number}</div>
+                <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center mx-auto mb-4">
+                  <step.icon className="h-6 w-6 text-primary" />
+                </div>
+                <h3 className="font-semibold mb-2">{step.title}</h3>
+                <p className="text-sm text-muted-foreground leading-relaxed">{step.description}</p>
+                {index < steps.length - 1 && (
+                  <div className="hidden md:block absolute right-0 top-1/2 w-8 h-px bg-border" />
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
       {/* CTA + Contact Us Section */}
-      <section className="py-20 md:py-32 relative z-10">
+      <section className="py-20 md:py-32 border-t border-border">
         <div className="container mx-auto px-4">
-          <ScrollReveal direction="up" duration={0.6}>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-32 items-start max-w-5xl mx-auto">
-              <div className="text-left lg:justify-self-start lg:pr-4">
-                <h2 className="text-3xl md:text-4xl font-bold mb-4">
-                  {user ? "Your opportunities await" : "Ready to explore the void?"}
-                </h2>
-                <p className="text-muted-foreground max-w-lg mb-8">
-                  {user
-                    ? "Continue exploring under-covered investment opportunities in your dashboard."
-                    : "Start discovering under-covered investment opportunities today. No credit card required."
-                  }
-                </p>
-                <Button
-                  size="lg"
-                  asChild
-                  className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2 px-8"
-                >
-                  <Link href={user ? "/dashboard" : "/register"}>
-                    {user ? "Go to Dashboard" : "Get Started Free"}
-                    <ArrowRight className="h-4 w-4" />
-                  </Link>
-                </Button>
-              </div>
-              <div className="lg:justify-self-end lg:pl-4">
-                <ContactUsBlock />
-              </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-32 items-start max-w-5xl mx-auto">
+            <div className="text-left lg:justify-self-start lg:pr-4">
+              <h2 className="text-3xl md:text-4xl font-bold mb-4">
+                {user ? "Your opportunities await" : "Ready to explore the void?"}
+              </h2>
+              <p className="text-muted-foreground max-w-lg mb-8">
+                {user
+                  ? "Continue exploring under-covered investment opportunities in your dashboard."
+                  : "Start discovering under-covered investment opportunities today. No credit card required."
+                }
+              </p>
+              <Button size="lg" asChild className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2 px-8">
+                <Link href={user ? "/dashboard" : "/register"}>
+                  {user ? "Go to Dashboard" : "Get Started Free"}
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+              </Button>
             </div>
-          </ScrollReveal>
+            <div className="lg:justify-self-end lg:pl-4">
+              <ContactUsBlock />
+            </div>
+          </div>
         </div>
       </section>
-      </div>
 
       <Footer />
-
-      <style jsx>{`
-        /* Circular roaming: cards drift in a circle around their base position; -50%-50% centers card on orbit point */
-        @keyframes roam {
-          0%,
-          100% {
-            transform: translate(-50%, -50%) translate(0, 0) translateY(0);
-          }
-          25% {
-            transform: translate(-50%, -50%) translate(14px, -14px) translateY(-6px);
-          }
-          50% {
-            transform: translate(-50%, -50%) translate(0, -28px) translateY(-4px);
-          }
-          75% {
-            transform: translate(-50%, -50%) translate(-14px, -14px) translateY(-8px);
-          }
-        }
-        :global(.animate-roam) {
-          animation: roam 10s ease-in-out infinite;
-        }
-      `}</style>
     </div>
   )
 }
