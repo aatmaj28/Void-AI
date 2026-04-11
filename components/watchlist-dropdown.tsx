@@ -81,7 +81,7 @@ export function WatchlistDropdown({ ticker, companyName }: WatchlistDropdownProp
       </DropdownMenuTrigger>
       <DropdownMenuContent 
         align="end" 
-        className="w-56 p-1.5 border-primary/40 bg-card/95 backdrop-blur-2xl shadow-[0_0_30px_rgba(124,58,237,0.25)] ring-1 ring-primary/20 rounded-xl"
+        className="w-56 p-1.5 border-border bg-card rounded-xl"
       >
         <DropdownMenuLabel className="font-normal text-xs text-muted-foreground flex justify-between items-center px-2 py-1.5">
           <span>Save <span className="font-bold text-foreground text-primary">{ticker}</span> to...</span>

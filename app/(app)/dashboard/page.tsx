@@ -151,11 +151,11 @@ function MiniSparkline({ data }: { data: number[] }) {
 function OpportunityTypeBadge({ type }: { type: string }) {
   const colors: Record<string, string> = {
     "High Priority": "bg-primary/10 text-primary border-primary/20",
-    "Strong Opportunity": "bg-cyan/10 text-cyan border-cyan/20",
+    "Strong Opportunity": "bg-success/10 text-success border-success/20",
     "Moderate Opportunity": "bg-warning/10 text-warning border-warning/20",
     "Low Priority": "bg-muted/50 text-muted-foreground border-muted",
     "High Activity Low Coverage": "bg-primary/10 text-primary border-primary/20",
-    "Emerging Coverage Gap": "bg-cyan/10 text-cyan border-cyan/20",
+    "Emerging Coverage Gap": "bg-warning/10 text-warning border-warning/20",
     "Institutional Blind Spot": "bg-warning/10 text-warning border-warning/20",
     "Sector Mispricing": "bg-success/10 text-success border-success/20",
   }
@@ -521,7 +521,7 @@ export default function DashboardPage() {
                           <div className="flex items-center justify-end gap-2">
                             <div className="w-16 h-2 bg-secondary rounded-full overflow-hidden hidden sm:block">
                               <div
-                                className="h-full bg-gradient-to-r from-primary to-cyan rounded-full"
+                                className="h-full bg-primary rounded-full"
                                 style={{ width: `${stock.gapScore}%` }}
                               />
                             </div>
@@ -673,7 +673,7 @@ export default function DashboardPage() {
 
         {/* Sidebar: stretches to main column height; alerts scroll inside */}
         <aside className="flex flex-col gap-6 min-h-0 lg:h-full lg:min-h-[520px]">
-          <Card className="flex flex-col flex-1 min-h-0 border-primary/10 shadow-sm">
+          <Card className="flex flex-col flex-1 min-h-0 shadow-sm">
             <CardHeader className="flex flex-row items-center justify-between pb-2 shrink-0">
               <CardTitle className="text-lg font-semibold">Recent Alerts</CardTitle>
               <Button variant="ghost" size="sm" asChild>
