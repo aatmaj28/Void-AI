@@ -162,7 +162,7 @@ export default function WatchlistPage() {
         <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
           <DialogTrigger asChild>
             <Button
-              className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 shadow-[0_0_20px_rgba(124,58,237,0.3)]"
+              className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
             >
               <Plus className="h-4 w-4" />
               New Watchlist
@@ -170,10 +170,9 @@ export default function WatchlistPage() {
           </DialogTrigger>
           
           {/* Spotlight Overlay */}
-          <div className={`fixed inset-0 z-[49] bg-background/80 backdrop-blur-xl transition-opacity duration-300 pointer-events-none ${showCreateDialog ? 'opacity-100' : 'opacity-0'}`} />
+          <div className={`fixed inset-0 z-[49] bg-background/80 transition-opacity duration-300 pointer-events-none ${showCreateDialog ? 'opacity-100' : 'opacity-0'}`} />
           
-          <DialogContent className="sm:max-w-[425px] border-border/40 bg-card/60 backdrop-blur-2xl shadow-[0_0_50px_rgba(124,58,237,0.15)] overflow-hidden sm:rounded-2xl z-50">
-             <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-cyan/10 pointer-events-none" />
+          <DialogContent className="sm:max-w-[425px] border-border bg-card overflow-hidden sm:rounded-xl z-50">
              <div className="relative z-10 p-2">
                 <DialogHeader className="mb-6">
                   <DialogTitle className="text-2xl font-bold tracking-tight">Create Watchlist</DialogTitle>
@@ -437,7 +436,7 @@ export default function WatchlistPage() {
                             <div className="flex items-center justify-end gap-3">
                               <div className="w-12 h-1.5 bg-secondary rounded-full overflow-hidden hidden sm:block">
                                 <div
-                                  className="h-full bg-gradient-to-r from-primary to-cyan rounded-full"
+                                  className="h-full bg-primary rounded-full"
                                   style={{ width: `${stock.gapScore}%` }}
                                 />
                               </div>

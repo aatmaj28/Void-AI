@@ -55,6 +55,9 @@ PG_CONN_STRING = os.getenv("PG_CONN_STRING")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY", "")
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "mistralai/mistral-medium-3.1")
+BLACKWELL_URL = os.getenv("BLACKWELL_URL", "")
+BLACKWELL_MODEL = os.getenv("BLACKWELL_MODEL", "google/gemma-3-12b-it")
+USE_ML_WEIGHTS = os.getenv("USE_ML_WEIGHTS", "false").lower() == "true"
 
 if not SUPABASE_URL or not SUPABASE_KEY:
     print("❌ Missing SUPABASE_URL or SUPABASE_ANON_KEY in .env.local")
@@ -173,13 +176,13 @@ def fetch_one_ticker(ticker: str):
                     "volume": vol,
                 })
             hist = hist.copy()
-            hist["returns"] = hist["Close"].pct_change()
+            hist["returns"] = hist["Close"].pct_change(fill_method=None)
             avg_vol = int(hist["Volume"].tail(20).mean()) if hist["Volume"].tail(20).notna().any() else 0
             ret_tail = hist["returns"].tail(20).dropna()
             vol_20 = round(_finite_or_default(float(ret_tail.std() * np.sqrt(252)) if len(ret_tail) >= 2 else 0.0), 4)
             cur = round(_finite_or_default(hist["Close"].iloc[-1]), 4)
-            pc1 = hist["Close"].pct_change(21).iloc[-1] if len(hist) >= 22 else np.nan
-            pc3 = hist["Close"].pct_change(63).iloc[-1] if len(hist) >= 64 else np.nan
+            pc1 = hist["Close"].pct_change(21, fill_method=None).iloc[-1] if len(hist) >= 22 else np.nan
+            pc3 = hist["Close"].pct_change(63, fill_method=None).iloc[-1] if len(hist) >= 64 else np.nan
             ch1 = round(_finite_or_default(pc1), 4) if pd.notna(pc1) else 0.0
             ch3 = round(_finite_or_default(pc3), 4) if pd.notna(pc3) else 0.0
             yh = round(_finite_or_default(hist["High"].max()), 4)
@@ -238,7 +241,21 @@ def _execute_with_retry(execute_fn, batch_label: str):
             else:
                 raise
 
+def _sanitize_rows(rows):
+    """Replace NaN/Inf floats with None so JSON serialisation succeeds."""
+    clean = []
+    for row in rows:
+        r = {}
+        for k, v in row.items():
+            if isinstance(v, float) and (np.isnan(v) or np.isinf(v)):
+                r[k] = None
+            else:
+                r[k] = v
+        clean.append(r)
+    return clean
+
 def upsert_market_data(rows):
+    rows = _sanitize_rows(rows)
     for i in range(0, len(rows), MARKET_BATCH):
         batch = rows[i:i+MARKET_BATCH]
         _execute_with_retry(lambda b=batch: supabase.table("market_data").upsert(b, on_conflict="ticker,date").execute(), f"market_data batch {i//MARKET_BATCH+1}")
@@ -246,6 +263,7 @@ def upsert_market_data(rows):
     print(f"  market_data: {len(rows)} rows")
 
 def upsert_stock_metrics(rows):
+    rows = _sanitize_rows(rows)
     for i in range(0, len(rows), METRICS_BATCH):
         batch = rows[i:i+METRICS_BATCH]
         _execute_with_retry(lambda b=batch: supabase.table("stock_metrics").upsert(b, on_conflict="ticker").execute(), f"stock_metrics batch {i//METRICS_BATCH+1}")
@@ -253,6 +271,7 @@ def upsert_stock_metrics(rows):
     print(f"  stock_metrics: {len(rows)} rows")
 
 def upsert_analyst_coverage(rows):
+    rows = _sanitize_rows(rows)
     for i in range(0, len(rows), ANALYST_BATCH):
         batch = rows[i:i+ANALYST_BATCH]
         _execute_with_retry(lambda b=batch: supabase.table("analyst_coverage").upsert(b, on_conflict="ticker").execute(), f"analyst_coverage batch {i//ANALYST_BATCH+1}")
@@ -271,6 +290,7 @@ def upsert_analyst_coverage_history(rows):
 
 def upsert_companies(rows):
     if not rows: return
+    rows = _sanitize_rows(rows)
     for i in range(0, len(rows), COMPANIES_BATCH):
         batch = rows[i:i+COMPANIES_BATCH]
         _execute_with_retry(lambda b=batch: supabase.table("companies").upsert(b, on_conflict="ticker").execute(), f"companies batch {i//COMPANIES_BATCH+1}")
@@ -405,10 +425,41 @@ def print_diagnostics(df):
             print(f"    {label}: {count} ({100*count/len(df):.1f}%)")
     print()
 
+def _load_ml_weights():
+    """Load the best ML-learned weights from the ml_learned_weights table."""
+    try:
+        res = supabase.table("ml_learned_weights") \
+            .select("model_name, w_coverage, w_activity, w_quality, spearman_corr") \
+            .order("spearman_corr", desc=True).limit(1).execute()
+        if res.data:
+            row = res.data[0]
+            wc = float(row["w_coverage"])
+            wa = float(row["w_activity"])
+            wq = float(row["w_quality"])
+            total = wc + wa + wq
+            if total > 0:
+                wc, wa, wq = wc / total, wa / total, wq / total
+            print(f"  Loaded ML weights ({row['model_name']}): coverage={wc:.4f}, activity={wa:.4f}, quality={wq:.4f}")
+            return wc, wa, wq
+    except Exception as e:
+        print(f"  Warning: could not load ML weights: {e}")
+    return None
+
+
 def run_scoring_engine():
+    w_cov, w_act, w_qual = W_COVERAGE, W_ACTIVITY, W_QUALITY
+    if USE_ML_WEIGHTS:
+        ml_w = _load_ml_weights()
+        if ml_w:
+            w_cov, w_act, w_qual = ml_w
+        else:
+            print("  Falling back to hardcoded weights")
+
     print("\n" + "=" * 60)
     print("SCORING ENGINE v2")
-    print(f"Weights: coverage={W_COVERAGE}, activity={W_ACTIVITY}, quality={W_QUALITY}")
+    print(f"Weights: coverage={w_cov}, activity={w_act}, quality={w_qual}")
+    if USE_ML_WEIGHTS:
+        print("(Using ML-learned weights)")
     print("=" * 60 + "\n")
     companies = fetch_all("companies", "ticker, sector, market_cap, industry")
     metrics = fetch_all("stock_metrics", "*")
@@ -424,7 +475,7 @@ def run_scoring_engine():
     df["coverage_score"] = coverage_score_per_peer(df, history_df)
     df["activity_score"] = activity_score_per_peer(df)
     df["quality_score"] = quality_score_continuous(df)
-    df["gap_score"] = (W_COVERAGE * df["coverage_score"] + W_ACTIVITY * df["activity_score"] + W_QUALITY * df["quality_score"]).clip(0, 100)
+    df["gap_score"] = (w_cov * df["coverage_score"] + w_act * df["activity_score"] + w_qual * df["quality_score"]).clip(0, 100)
     df["opportunity_type"] = df["gap_score"].map(opportunity_type)
     df["confidence"] = compute_confidence(df)
     for col in ["coverage_score", "activity_score", "quality_score", "gap_score", "confidence"]:
@@ -439,7 +490,36 @@ def run_scoring_engine():
     for i in range(0, len(records), 100):
         supabase.table("coverage_gap_scores").upsert(records[i:i+100], on_conflict="ticker").execute()
     print(f"Done. {len(records)} rows.\n")
+
+    _upsert_score_history(records)
+
     return 0
+
+
+def _upsert_score_history(records):
+    """Log daily score snapshot for backtesting and ML training."""
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    history_rows = []
+    for r in records:
+        history_rows.append({
+            "ticker": r["ticker"],
+            "snapshot_date": today,
+            "coverage_score": r.get("coverage_score"),
+            "activity_score": r.get("activity_score"),
+            "quality_score": r.get("quality_score"),
+            "gap_score": r.get("gap_score"),
+            "confidence": r.get("confidence"),
+            "opportunity_type": r.get("opportunity_type"),
+        })
+    try:
+        print("Upserting score_history...")
+        for i in range(0, len(history_rows), 100):
+            batch = history_rows[i:i+100]
+            supabase.table("score_history").upsert(batch, on_conflict="ticker,snapshot_date").execute()
+        print(f"  score_history: {len(history_rows)} rows (snapshot {today})")
+    except Exception as e:
+        print(f"  Warning: score_history upsert failed: {e}")
+        print("  (Run migration 013_create_score_history.sql if table doesn't exist)")
 
 
 # ===================== STOCK PROFILE GENERATION (RAG) =====================
@@ -757,6 +837,169 @@ def run_quick_hypothesis_generation():
     print(f"  {'=' * 60}\n")
 
 
+# ===================== LLM-AS-A-JUDGE VALIDATION =====================
+
+LLM_VALIDATION_TOP_N = 20
+
+LLM_JUDGE_SYSTEM_PROMPT = """You are a skeptical senior equity research analyst reviewing automated stock screening results from Void AI's scoring engine.
+
+The scoring engine identifies under-covered stocks with unusual market activity. You must evaluate whether the engine's "High Priority" or "Strong Opportunity" classification makes sense.
+
+You MUST respond with ONLY valid JSON (no markdown, no code fences):
+{
+  "agreement_score": <integer 1-10, where 10 = strongly agree with classification>,
+  "reasoning": "2-3 sentences explaining your assessment. Reference specific data points.",
+  "red_flags": ["list of concerns, if any"],
+  "suggested_category": "High Priority | Strong Opportunity | Moderate Opportunity | Low Priority"
+}
+
+Rules:
+- Be skeptical. Challenge the classification with data.
+- Low analyst coverage alone is NOT sufficient for High Priority — there must also be unusual activity or a clear catalyst.
+- Flag if the stock looks like a penny stock, is extremely illiquid, or has suspicious volume spikes.
+- A stock with 0 analysts, no price targets, and low volume is likely Low Priority despite a high coverage gap.
+- Output ONLY valid JSON. No markdown formatting."""
+
+
+def run_llm_validation():
+    """Validate top scoring engine picks using LLM-as-a-Judge (Gemma on Blackwell)."""
+    if not BLACKWELL_URL:
+        print("  BLACKWELL_URL not set — skipping LLM validation.")
+        return
+
+    print(f"\n{'=' * 60}")
+    print(f"LLM-AS-A-JUDGE VALIDATION (Top {LLM_VALIDATION_TOP_N})")
+    print(f"Model: {BLACKWELL_MODEL} @ {BLACKWELL_URL}")
+    print(f"{'=' * 60}\n")
+
+    try:
+        res = supabase.table("coverage_gap_scores") \
+            .select("ticker, gap_score, confidence, opportunity_type, coverage_score, activity_score, quality_score") \
+            .gte("gap_score", 50) \
+            .order("gap_score", desc=True) \
+            .limit(LLM_VALIDATION_TOP_N) \
+            .execute()
+        top_stocks = res.data or []
+    except Exception as e:
+        print(f"  Failed to fetch top stocks: {e}")
+        return
+
+    if not top_stocks:
+        print("  No stocks with gap_score >= 50. Skipping.")
+        return
+
+    print(f"  Validating {len(top_stocks)} stocks...\n")
+    validated, agreements, disagreements = 0, 0, 0
+
+    for stock in top_stocks:
+        ticker = stock["ticker"]
+
+        try:
+            company = supabase.table("companies") \
+                .select("ticker, name, sector, industry, market_cap, cap_type") \
+                .eq("ticker", ticker).limit(1).execute()
+            metrics = supabase.table("stock_metrics") \
+                .select("current_price, avg_volume_20d, volatility_20d, price_change_1m, price_change_3m, year_high, year_low, pe_ratio") \
+                .eq("ticker", ticker).limit(1).execute()
+            cov = supabase.table("analyst_coverage") \
+                .select("analyst_count, recommendation_key, recommendation_mean, target_mean_price, target_high_price, target_low_price") \
+                .eq("ticker", ticker).limit(1).execute()
+
+            context = {
+                "company": company.data[0] if company.data else {},
+                "metrics": metrics.data[0] if metrics.data else {},
+                "coverage": cov.data[0] if cov.data else {},
+                "scores": stock,
+            }
+        except Exception as e:
+            print(f"    [{ticker}] Context fetch failed: {e}")
+            continue
+
+        user_prompt = (
+            f"Evaluate this stock's classification as '{stock.get('opportunity_type', 'Unknown')}'.\n\n"
+            f"COMPANY: {json.dumps(context['company'], default=str)}\n"
+            f"METRICS: {json.dumps(context['metrics'], default=str)}\n"
+            f"ANALYST COVERAGE: {json.dumps(context['coverage'], default=str)}\n"
+            f"SCORING ENGINE OUTPUT: {json.dumps(context['scores'], default=str)}\n\n"
+            f"Remember: Output ONLY valid JSON."
+        )
+
+        try:
+            response = requests.post(
+                BLACKWELL_URL,
+                headers={"Content-Type": "application/json"},
+                json={
+                    "model": BLACKWELL_MODEL,
+                    "messages": [
+                        {"role": "system", "content": LLM_JUDGE_SYSTEM_PROMPT},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    "max_tokens": 500,
+                    "temperature": 0.3,
+                },
+                timeout=60,
+            )
+            response.raise_for_status()
+            raw = response.json()["choices"][0]["message"]["content"].strip()
+
+            if raw.startswith("```"):
+                lines = raw.split("\n")[1:]
+                if lines and lines[-1].strip() == "```":
+                    lines = lines[:-1]
+                raw = "\n".join(lines).strip()
+
+            result = json.loads(raw)
+
+            agreement_score = int(result.get("agreement_score", 5))
+            reasoning = result.get("reasoning", "")
+            red_flags = result.get("red_flags", [])
+            suggested = result.get("suggested_category", "Unknown")
+
+            formula_cat = stock.get("opportunity_type", "")
+            agrees = suggested == formula_cat or agreement_score >= 7
+            if agrees:
+                agreements += 1
+            else:
+                disagreements += 1
+
+            record = {
+                "ticker": ticker,
+                "gap_score": float(stock["gap_score"]) if stock.get("gap_score") else None,
+                "agreement_score": agreement_score,
+                "reasoning": reasoning,
+                "red_flags": json.dumps(red_flags) if isinstance(red_flags, list) else str(red_flags),
+                "suggested_category": suggested,
+                "model_used": BLACKWELL_MODEL,
+                "validated_at": datetime.utcnow().isoformat(),
+            }
+            supabase.table("llm_validations").insert(record).execute()
+            validated += 1
+
+            status = "AGREE" if agrees else "DISAGREE"
+            print(f"    {status} {ticker} (gap:{stock['gap_score']}) "
+                  f"formula={formula_cat} | llm={suggested} (score:{agreement_score}/10)")
+            if red_flags:
+                print(f"           Red flags: {', '.join(red_flags[:3])}")
+
+        except json.JSONDecodeError as e:
+            print(f"    [{ticker}] LLM returned invalid JSON: {e}")
+        except Exception as e:
+            print(f"    [{ticker}] LLM call failed: {e}")
+
+        time.sleep(0.5)
+
+    total = agreements + disagreements
+    agreement_pct = (agreements / total * 100) if total > 0 else 0
+
+    print(f"\n  {'=' * 40}")
+    print(f"  VALIDATION SUMMARY")
+    print(f"  {'=' * 40}")
+    print(f"  Validated: {validated}/{len(top_stocks)}")
+    print(f"  Agreements: {agreements} ({agreement_pct:.0f}%)")
+    print(f"  Disagreements: {disagreements} ({100 - agreement_pct:.0f}%)")
+    print(f"  {'=' * 40}\n")
+
+
 # ===================== MAIN PIPELINE =====================
 
 def main():
@@ -838,6 +1081,15 @@ def main():
     except Exception as e:
         print(f"⚠️ Quick hypothesis generation failed: {e}")
         print("  (All other pipeline data is saved — hypotheses can be generated on-demand)")
+
+    # LLM-as-a-Judge validation of top scoring picks
+    print("\n" + "=" * 60 + "\nRunning LLM-as-a-Judge validation...\n" + "=" * 60)
+    try:
+        run_llm_validation()
+        print("✅ LLM validation complete!")
+    except Exception as e:
+        print(f"⚠️ LLM validation failed: {e}")
+        print("  (All scoring data is saved — validation can be run independently)")
 
     print("\n" + "=" * 60 + "\nGenerating Alerts based on user settings...\n" + "=" * 60)
     try:

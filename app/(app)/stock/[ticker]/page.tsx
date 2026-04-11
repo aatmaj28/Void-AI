@@ -85,7 +85,7 @@ function ScoreBar({ label, value, max = 100 }: { label: string; value: number; m
         <span className="font-mono">{value}</span>
       </div>
       <div className="h-2 bg-secondary rounded-full overflow-hidden">
-        <div className="h-full bg-gradient-to-r from-primary to-cyan rounded-full transition-all duration-500" style={{ width: `${percentage}%` }} />
+        <div className="h-full bg-primary rounded-full transition-all duration-500" style={{ width: `${percentage}%` }} />
       </div>
     </div>
   )
@@ -495,7 +495,7 @@ export default function StockDetailPage({ params }: { params: Promise<{ ticker: 
               {/* Progress bar */}
               <div className="h-1.5 bg-secondary rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-gradient-to-r from-primary to-cyan-400 rounded-full transition-all duration-700 ease-out"
+                  className="h-full bg-primary rounded-full transition-all duration-700 ease-out"
                   style={{ width: `${(streamingTasks.length / 9) * 100}%` }}
                 />
               </div>

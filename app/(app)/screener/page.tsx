@@ -323,7 +323,7 @@ export default function ScreenerPage() {
                     key={screen.id}
                     className={`cursor-pointer transition-all duration-300 overflow-hidden group ${
                       activeScreen === screen.id
-                        ? "border-primary/50 bg-primary/5 shadow-[0_0_15px_rgba(124,58,237,0.1)] ring-1 ring-primary/20"
+                        ? "border-primary/50 bg-primary/5 ring-1 ring-primary/30"
                         : "hover:border-primary/30 hover:bg-card/80"
                     }`}
                     onClick={() => loadScreen(screen)}
@@ -491,10 +491,9 @@ export default function ScreenerPage() {
                   </DialogTrigger>
                   
                   {/* Spotlight Overlay */}
-                  <div className={`fixed inset-0 z-[49] bg-background/80 backdrop-blur-xl transition-opacity duration-300 pointer-events-none ${showSaveDialog ? 'opacity-100' : 'opacity-0'}`} />
+                  <div className={`fixed inset-0 z-[49] bg-background/80 transition-opacity duration-300 pointer-events-none ${showSaveDialog ? 'opacity-100' : 'opacity-0'}`} />
                   
-                  <DialogContent className="sm:max-w-[500px] border-border/40 bg-card/60 backdrop-blur-2xl shadow-[0_0_50px_rgba(124,58,237,0.15)] p-0 overflow-hidden sm:rounded-2xl z-50">
-                    <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-cyan/10 pointer-events-none" />
+                  <DialogContent className="sm:max-w-[500px] border-border bg-card p-0 overflow-hidden sm:rounded-xl z-50">
                     <div className="p-6 relative z-10">
                       <DialogHeader className="mb-6">
                         <DialogTitle className="text-2xl font-bold tracking-tight">Save Strategy Screen</DialogTitle>
@@ -626,7 +625,7 @@ export default function ScreenerPage() {
                             <div className="flex items-center justify-end gap-2">
                               <div className="w-12 h-2 bg-secondary rounded-full overflow-hidden hidden sm:block">
                                 <div
-                                  className="h-full bg-gradient-to-r from-primary to-cyan rounded-full"
+                                  className="h-full bg-primary rounded-full"
                                   style={{ width: `${stock.gapScore}%` }}
                                 />
                               </div>

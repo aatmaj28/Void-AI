@@ -60,17 +60,7 @@ export function AnimatedStepper({ steps }: AnimatedStepperProps) {
   }
 
   const pulseVariants = {
-    pulse: {
-      boxShadow: [
-        "0 0 0 0 rgba(168, 85, 247, 0.7)",
-        "0 0 0 10px rgba(168, 85, 247, 0)",
-      ],
-      transition: {
-        duration: 2,
-        repeat: Infinity,
-        ease: "easeOut",
-      },
-    },
+    pulse: {},
   }
 
   return (
@@ -78,7 +68,7 @@ export function AnimatedStepper({ steps }: AnimatedStepperProps) {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-8 relative">
         {/* Animated Connector line - desktop only */}
         <motion.div
-          className="hidden md:block absolute top-12 left-[12.5%] right-[12.5%] h-0.5 bg-gradient-to-r from-primary via-cyan to-primary origin-left"
+          className="hidden md:block absolute top-12 left-[12.5%] right-[12.5%] h-px bg-border origin-left"
           initial="hidden"
           animate={isInView ? "show" : "hidden"}
           variants={lineVariants}
@@ -100,12 +90,11 @@ export function AnimatedStepper({ steps }: AnimatedStepperProps) {
                 animate={isInView ? "pulse" : {}}
               />
               <motion.div
-                className="relative h-full w-full rounded-full bg-card border-2 border-primary flex items-center justify-center shadow-lg shadow-primary/10"
+                className="relative h-full w-full rounded-full bg-card border border-border flex items-center justify-center"
                 custom={index}
                 variants={iconVariants}
                 whileHover={{
-                  scale: 1.1,
-                  boxShadow: "0 0 20px 0 rgba(168, 85, 247, 0.4)",
+                  scale: 1.05,
                 }}
                 transition={{ type: "spring", stiffness: 400, damping: 10 }}
               >
