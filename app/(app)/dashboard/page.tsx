@@ -435,8 +435,8 @@ export default function DashboardPage() {
                   <AreaChart data={trendData}>
                     <defs>
                       <linearGradient id="opportunityGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#7c3aed" stopOpacity={0.3} />
-                        <stop offset="95%" stopColor="#7c3aed" stopOpacity={0} />
+                        <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="#3B82F6" stopOpacity={0} />
                       </linearGradient>
                     </defs>
                     <XAxis
@@ -452,8 +452,8 @@ export default function DashboardPage() {
                     />
                     <Tooltip
                       contentStyle={{
-                        backgroundColor: "#141417",
-                        border: "1px solid #27272a",
+                        backgroundColor: "#121821",
+                        border: "1px solid #1E2A3A",
                         borderRadius: "8px",
                       }}
                       labelStyle={{ color: "#fafafa" }}
@@ -461,7 +461,7 @@ export default function DashboardPage() {
                     <Area
                       type="monotone"
                       dataKey="opportunities"
-                      stroke="#7c3aed"
+                      stroke="#3B82F6"
                       strokeWidth={2}
                       fill="url(#opportunityGradient)"
                     />
@@ -603,7 +603,7 @@ export default function DashboardPage() {
                                 cell.value === null
                                   ? { backgroundColor: "transparent" }
                                   : {
-                                      backgroundColor: `rgba(124, 58, 237, ${cell.value / 100})`,
+                                      backgroundColor: `rgba(59, 130, 246, ${cell.value / 100})`,
                                       color: cell.value > 50 ? "#fff" : "#a1a1aa",
                                     }
                               }
@@ -632,7 +632,7 @@ export default function DashboardPage() {
                         <div
                           key={i}
                           className="flex-1"
-                          style={{ backgroundColor: `rgba(124, 58, 237, ${a})` }}
+                          style={{ backgroundColor: `rgba(59, 130, 246, ${a})` }}
                         />
                       ))}
                     </div>

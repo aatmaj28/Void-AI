@@ -45,7 +45,7 @@ import {
   Tooltip,
 } from "recharts"
 
-const COLORS = ["#7c3aed", "#06b6d4", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6"]
+const COLORS = ["#3B82F6", "#6366F1", "#22C55E", "#F59E0B", "#EF4444", "#8B5CF6"]
 
 function MiniSparkline({ data }: { data: number[] }) {
   const chartData = data.map((value, index) => ({ index, value }))

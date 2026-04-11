@@ -86,7 +86,7 @@ export function AnimatedStepper({ steps }: AnimatedStepperProps) {
               <motion.div
                 className="absolute inset-0 rounded-full"
                 variants={pulseVariants}
-                initial={{ boxShadow: "0 0 0 0 rgba(168, 85, 247, 0.7)" }}
+                initial={{ boxShadow: "0 0 0 0 rgba(59, 130, 246, 0.7)" }}
                 animate={isInView ? "pulse" : {}}
               />
               <motion.div
