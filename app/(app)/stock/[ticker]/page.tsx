@@ -23,12 +23,16 @@ import {
   ExternalLink,
   Brain,
   Sparkles,
+  ShieldCheck,
+  ArrowUpRight,
+  ArrowDownRight,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Input } from "@/components/ui/input"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { formatMarketCap, formatVolume, formatPercent } from "@/lib/mock-data"
 import { sendChatMessage, sendChatMessageStream } from "@/lib/rag-chat"
 import { getAnalysis, generateAnalysis, generateAnalysisStream, type AnalysisData, type StreamingTask } from "@/lib/analysis-api"
@@ -160,6 +164,19 @@ type StockDetail = {
 
 type NewsItem = { id: number; source: string; headline: string; url: string; datetime: number; summary: string; image: string | null }
 
+type LLMValidation = {
+  ticker: string
+  originalScore: number
+  adjustedScore: number
+  originalCategory: string
+  suggestedCategory: string
+  agreementScore: number
+  reasoning: string
+  redFlags: string[]
+  model: string
+  validatedAt: string
+}
+
 export default function StockDetailPage({ params }: { params: Promise<{ ticker: string }> }) {
   const { ticker: tickerParam } = use(params)
   const ticker = tickerParam?.toUpperCase() ?? ""
@@ -181,6 +198,9 @@ export default function StockDetailPage({ params }: { params: Promise<{ ticker: 
   const [secFilingsError, setSecFilingsError] = useState<string | null>(null)
   const [volumeHistory, setVolumeHistory] = useState<Array<{ date: string; volume: number }>>([])
   const [volumeHistoryLoading, setVolumeHistoryLoading] = useState(false)
+
+  // LLM Validation state
+  const [validation, setValidation] = useState<LLMValidation | null>(null)
 
   // AI Analysis state
   const [analysis, setAnalysis] = useState<AnalysisData | null>(null)
@@ -243,6 +263,15 @@ export default function StockDetailPage({ params }: { params: Promise<{ ticker: 
       })
       .catch(() => setVolumeHistory([]))
       .finally(() => setVolumeHistoryLoading(false))
+  }, [ticker])
+
+  // Fetch LLM validation for this ticker
+  useEffect(() => {
+    if (!ticker) return
+    fetch(`/api/stock/${ticker}/validation`)
+      .then((res) => { if (!res.ok) throw new Error("No validation"); return res.json() })
+      .then((data) => { if (data.validation) setValidation(data.validation) })
+      .catch(() => {})
   }, [ticker])
 
   // Fetch AI analysis when the analysis tab is selected
@@ -365,6 +394,102 @@ export default function StockDetailPage({ params }: { params: Promise<{ ticker: 
             <h1 className="text-3xl font-bold font-mono">{stock.ticker}</h1>
             <Badge variant="secondary" className="text-sm">{stock.sector}</Badge>
             <Badge variant="outline" className="text-sm">{stock.industry}</Badge>
+            {validation && (
+              <Dialog>
+                <DialogTrigger asChild>
+                  <button className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-colors cursor-pointer">
+                    <ShieldCheck className="h-3.5 w-3.5" />
+                    AI Validated
+                  </button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-lg">
+                  <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2">
+                      <ShieldCheck className="h-5 w-5 text-primary" />
+                      AI Validation — {validation.ticker}
+                    </DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-5 pt-2">
+                    {/* Agreement Score */}
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-secondary/50">
+                      <span className="text-sm text-muted-foreground">Agreement Score</span>
+                      <div className="flex items-center gap-2">
+                        <div className="flex gap-0.5">
+                          {Array.from({ length: 10 }).map((_, i) => (
+                            <div
+                              key={i}
+                              className={`h-2.5 w-2.5 rounded-sm ${i < validation.agreementScore ? "bg-primary" : "bg-border"}`}
+                            />
+                          ))}
+                        </div>
+                        <span className="text-sm font-mono font-bold">{validation.agreementScore}/10</span>
+                      </div>
+                    </div>
+
+                    {/* Score Comparison */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="p-3 rounded-lg border border-border">
+                        <p className="text-xs text-muted-foreground mb-1">Original Score</p>
+                        <div className="flex items-center gap-2">
+                          <span className="text-2xl font-mono font-bold">{validation.originalScore}</span>
+                          <Badge variant="outline" className="text-xs">{validation.originalCategory}</Badge>
+                        </div>
+                      </div>
+                      <div className="p-3 rounded-lg border border-primary/30 bg-primary/5">
+                        <p className="text-xs text-muted-foreground mb-1">AI Adjusted Score</p>
+                        <div className="flex items-center gap-2">
+                          <span className="text-2xl font-mono font-bold">{validation.adjustedScore}</span>
+                          {validation.adjustedScore !== validation.originalScore && (
+                            <span className={`flex items-center text-xs font-mono ${validation.adjustedScore > validation.originalScore ? "text-success" : "text-destructive"}`}>
+                              {validation.adjustedScore > validation.originalScore
+                                ? <ArrowUpRight className="h-3 w-3" />
+                                : <ArrowDownRight className="h-3 w-3" />}
+                              {Math.abs(validation.adjustedScore - validation.originalScore).toFixed(1)}
+                            </span>
+                          )}
+                          <Badge variant="outline" className="text-xs">{validation.suggestedCategory}</Badge>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Category change callout */}
+                    {validation.originalCategory !== validation.suggestedCategory && (
+                      <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-warning/10 border border-warning/20 text-sm">
+                        <AlertTriangle className="h-4 w-4 text-warning shrink-0" />
+                        <span>Category changed from <strong>{validation.originalCategory}</strong> to <strong>{validation.suggestedCategory}</strong></span>
+                      </div>
+                    )}
+
+                    {/* Reasoning */}
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Reasoning</p>
+                      <p className="text-sm leading-relaxed">{validation.reasoning}</p>
+                    </div>
+
+                    {/* Red Flags */}
+                    {validation.redFlags.length > 0 && (
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Red Flags</p>
+                        <ul className="space-y-1.5">
+                          {validation.redFlags.map((flag, i) => (
+                            <li key={i} className="flex items-start gap-2 text-sm">
+                              <AlertTriangle className="h-3.5 w-3.5 text-destructive mt-0.5 shrink-0" />
+                              <span>{flag}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* Footer */}
+                    <div className="flex items-center justify-between pt-2 border-t border-border text-xs text-muted-foreground">
+                      <span>Model: {validation.model}</span>
+                      <span>{new Date(validation.validatedAt).toLocaleDateString()}</span>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            )}
           </div>
           <p className="text-lg text-muted-foreground">{stock.company}</p>
           <div className="flex items-center gap-4 mt-3">
