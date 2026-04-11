@@ -837,62 +837,84 @@ def run_quick_hypothesis_generation():
     print(f"  {'=' * 60}\n")
 
 
-# ===================== LLM-AS-A-JUDGE VALIDATION =====================
+# ===================== LLM-AS-A-JUDGE VALIDATION + SCORE CORRECTION =====================
 
-LLM_VALIDATION_TOP_N = 20
+LLM_JUDGE_SYSTEM_PROMPT = """You are a skeptical senior equity research analyst and quantitative reviewer at a top-tier investment firm. You are auditing the output of Void AI's automated stock scoring engine.
 
-LLM_JUDGE_SYSTEM_PROMPT = """You are a skeptical senior equity research analyst reviewing automated stock screening results from Void AI's scoring engine.
+The scoring engine computes a Gap Score (0-100) from three sub-scores:
+  - Coverage Score: How under-covered the stock is by Wall Street analysts (higher = fewer analysts relative to peers)
+  - Activity Score: How unusually active the stock's trading volume is (higher = more unusual volume)
+  - Quality Score: Signal quality based on data freshness, consistency, and completeness
 
-The scoring engine identifies under-covered stocks with unusual market activity. You must evaluate whether the engine's "High Priority" or "Strong Opportunity" classification makes sense.
+Your job is to:
+1. EVALUATE whether the engine's score and classification are reasonable
+2. PROVIDE YOUR OWN ADJUSTED SCORE using this mathematical framework:
+   - Start from the engine's gap_score as baseline
+   - Apply adjustments: +/- up to 15 points based on fundamentals
+   - Penalize: penny stocks (price < $5) → subtract 10-20 points
+   - Penalize: suspicious volume spikes without news → subtract 5-15 points
+   - Penalize: 0 analysts AND no price target AND low volume → subtract 10-15 points
+   - Reward: strong sector tailwinds + low coverage → add 5-10 points
+   - Reward: institutional buying signals + under-coverage → add 5-10 points
+   - Clamp final score to 0-100 range
+3. ASSIGN the correct category based on your adjusted score:
+   - >= 75: "High Priority"
+   - >= 60: "Strong Opportunity"
+   - >= 45: "Moderate Opportunity"
+   - < 45: "Low Priority"
 
 You MUST respond with ONLY valid JSON (no markdown, no code fences):
 {
-  "agreement_score": <integer 1-10, where 10 = strongly agree with classification>,
-  "reasoning": "2-3 sentences explaining your assessment. Reference specific data points.",
-  "red_flags": ["list of concerns, if any"],
+  "agreement_score": <integer 1-10, where 10 = strongly agree with original classification>,
+  "adjusted_gap_score": <number 0-100, your corrected score>,
+  "adjustment_reasoning": "1-2 sentences explaining what adjustments you made and why, with specific +/- point values",
+  "reasoning": "2-3 sentences of overall assessment referencing specific data points from the input",
+  "red_flags": ["list of specific concerns, if any"],
   "suggested_category": "High Priority | Strong Opportunity | Moderate Opportunity | Low Priority"
 }
 
 Rules:
-- Be skeptical. Challenge the classification with data.
-- Low analyst coverage alone is NOT sufficient for High Priority — there must also be unusual activity or a clear catalyst.
-- Flag if the stock looks like a penny stock, is extremely illiquid, or has suspicious volume spikes.
-- A stock with 0 analysts, no price targets, and low volume is likely Low Priority despite a high coverage gap.
+- Be data-driven. Every adjustment must reference a specific data point.
+- Do NOT just rubber-stamp the engine's score — apply critical judgment.
+- Low analyst coverage alone is NOT sufficient for High Priority — there must also be unusual activity.
+- If data is missing or incomplete, penalize the score for uncertainty.
 - Output ONLY valid JSON. No markdown formatting."""
 
 
 def run_llm_validation():
-    """Validate top scoring engine picks using LLM-as-a-Judge (Gemma on Blackwell)."""
+    """Validate and score-correct High Priority + Strong Opportunity picks using LLM-as-a-Judge."""
     if not BLACKWELL_URL:
         print("  BLACKWELL_URL not set — skipping LLM validation.")
         return
 
     print(f"\n{'=' * 60}")
-    print(f"LLM-AS-A-JUDGE VALIDATION (Top {LLM_VALIDATION_TOP_N})")
+    print(f"LLM-AS-A-JUDGE VALIDATION + SCORE CORRECTION")
     print(f"Model: {BLACKWELL_MODEL} @ {BLACKWELL_URL}")
     print(f"{'=' * 60}\n")
 
     try:
         res = supabase.table("coverage_gap_scores") \
             .select("ticker, gap_score, confidence, opportunity_type, coverage_score, activity_score, quality_score") \
-            .gte("gap_score", 50) \
+            .in_("opportunity_type", ["High Priority", "Strong Opportunity"]) \
             .order("gap_score", desc=True) \
-            .limit(LLM_VALIDATION_TOP_N) \
             .execute()
-        top_stocks = res.data or []
+        target_stocks = res.data or []
     except Exception as e:
-        print(f"  Failed to fetch top stocks: {e}")
+        print(f"  Failed to fetch stocks: {e}")
         return
 
-    if not top_stocks:
-        print("  No stocks with gap_score >= 50. Skipping.")
+    if not target_stocks:
+        print("  No High Priority or Strong Opportunity stocks found. Skipping.")
         return
 
-    print(f"  Validating {len(top_stocks)} stocks...\n")
-    validated, agreements, disagreements = 0, 0, 0
+    print(f"  Found {len(target_stocks)} stocks to validate (High Priority + Strong Opportunity)...\n")
+    validated = 0
+    score_changes = []
 
-    for stock in top_stocks:
+    for stock in target_stocks:
         ticker = stock["ticker"]
+        original_score = float(stock["gap_score"]) if stock.get("gap_score") else 0
+        original_cat = stock.get("opportunity_type", "Unknown")
 
         try:
             company = supabase.table("companies") \
@@ -916,12 +938,12 @@ def run_llm_validation():
             continue
 
         user_prompt = (
-            f"Evaluate this stock's classification as '{stock.get('opportunity_type', 'Unknown')}'.\n\n"
+            f"Evaluate and score-correct this stock currently classified as '{original_cat}' with gap_score={original_score}.\n\n"
             f"COMPANY: {json.dumps(context['company'], default=str)}\n"
-            f"METRICS: {json.dumps(context['metrics'], default=str)}\n"
+            f"MARKET METRICS: {json.dumps(context['metrics'], default=str)}\n"
             f"ANALYST COVERAGE: {json.dumps(context['coverage'], default=str)}\n"
             f"SCORING ENGINE OUTPUT: {json.dumps(context['scores'], default=str)}\n\n"
-            f"Remember: Output ONLY valid JSON."
+            f"Apply the mathematical adjustment framework. Output ONLY valid JSON."
         )
 
         try:
@@ -934,8 +956,8 @@ def run_llm_validation():
                         {"role": "system", "content": LLM_JUDGE_SYSTEM_PROMPT},
                         {"role": "user", "content": user_prompt},
                     ],
-                    "max_tokens": 500,
-                    "temperature": 0.3,
+                    "max_tokens": 600,
+                    "temperature": 0.2,
                 },
                 timeout=60,
             )
@@ -951,35 +973,42 @@ def run_llm_validation():
             result = json.loads(raw)
 
             agreement_score = int(result.get("agreement_score", 5))
+            adjusted_score = float(result.get("adjusted_gap_score", original_score))
+            adjusted_score = max(0.0, min(100.0, adjusted_score))
             reasoning = result.get("reasoning", "")
+            adjustment_reasoning = result.get("adjustment_reasoning", "")
             red_flags = result.get("red_flags", [])
             suggested = result.get("suggested_category", "Unknown")
 
-            formula_cat = stock.get("opportunity_type", "")
-            agrees = suggested == formula_cat or agreement_score >= 7
-            if agrees:
-                agreements += 1
-            else:
-                disagreements += 1
+            full_reasoning = reasoning
+            if adjustment_reasoning:
+                full_reasoning = f"{reasoning}\n\nScore adjustment: {adjustment_reasoning}"
+
+            score_delta = adjusted_score - original_score
+            score_changes.append(score_delta)
 
             record = {
                 "ticker": ticker,
-                "gap_score": float(stock["gap_score"]) if stock.get("gap_score") else None,
+                "gap_score": original_score,
+                "adjusted_gap_score": round(adjusted_score, 2),
+                "original_category": original_cat,
                 "agreement_score": agreement_score,
-                "reasoning": reasoning,
+                "reasoning": full_reasoning,
                 "red_flags": json.dumps(red_flags) if isinstance(red_flags, list) else str(red_flags),
                 "suggested_category": suggested,
                 "model_used": BLACKWELL_MODEL,
                 "validated_at": datetime.utcnow().isoformat(),
             }
-            supabase.table("llm_validations").insert(record).execute()
+            supabase.table("llm_validations").upsert(record, on_conflict="ticker,validated_at").execute()
             validated += 1
 
-            status = "AGREE" if agrees else "DISAGREE"
-            print(f"    {status} {ticker} (gap:{stock['gap_score']}) "
-                  f"formula={formula_cat} | llm={suggested} (score:{agreement_score}/10)")
+            delta_str = f"+{score_delta:.1f}" if score_delta >= 0 else f"{score_delta:.1f}"
+            cat_changed = "" if suggested == original_cat else f" → {suggested}"
+            print(f"    {ticker:6s}  gap:{original_score:5.1f} → {adjusted_score:5.1f} ({delta_str})  "
+                  f"agree:{agreement_score}/10  {original_cat}{cat_changed}")
             if red_flags:
-                print(f"           Red flags: {', '.join(red_flags[:3])}")
+                flags_str = ", ".join(red_flags[:3]) if isinstance(red_flags, list) else str(red_flags)
+                print(f"           Flags: {flags_str}")
 
         except json.JSONDecodeError as e:
             print(f"    [{ticker}] LLM returned invalid JSON: {e}")
@@ -988,16 +1017,18 @@ def run_llm_validation():
 
         time.sleep(0.5)
 
-    total = agreements + disagreements
-    agreement_pct = (agreements / total * 100) if total > 0 else 0
-
-    print(f"\n  {'=' * 40}")
-    print(f"  VALIDATION SUMMARY")
-    print(f"  {'=' * 40}")
-    print(f"  Validated: {validated}/{len(top_stocks)}")
-    print(f"  Agreements: {agreements} ({agreement_pct:.0f}%)")
-    print(f"  Disagreements: {disagreements} ({100 - agreement_pct:.0f}%)")
-    print(f"  {'=' * 40}\n")
+    print(f"\n  {'=' * 50}")
+    print(f"  VALIDATION + SCORE CORRECTION SUMMARY")
+    print(f"  {'=' * 50}")
+    print(f"  Validated: {validated}/{len(target_stocks)}")
+    if score_changes:
+        avg_delta = sum(score_changes) / len(score_changes)
+        upgrades = sum(1 for d in score_changes if d > 2)
+        downgrades = sum(1 for d in score_changes if d < -2)
+        unchanged = len(score_changes) - upgrades - downgrades
+        print(f"  Avg score adjustment: {avg_delta:+.1f} points")
+        print(f"  Upgraded: {upgrades}  |  Downgraded: {downgrades}  |  Unchanged: {unchanged}")
+    print(f"  {'=' * 50}\n")
 
 
 # ===================== MAIN PIPELINE =====================
