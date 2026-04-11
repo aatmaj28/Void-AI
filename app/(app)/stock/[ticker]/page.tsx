@@ -50,7 +50,7 @@ import {
   Cell,
 } from "recharts"
 
-const COLORS = ["#7c3aed", "#06b6d4", "#10b981", "#f59e0b", "#ef4444"]
+const COLORS = ["#3B82F6", "#06b6d4", "#10b981", "#f59e0b", "#ef4444"]
 
 function GapScoreGauge({ score }: { score: number }) {
   const circumference = 2 * Math.PI * 45
@@ -63,7 +63,7 @@ function GapScoreGauge({ score }: { score: number }) {
         <circle cx="64" cy="64" r="45" stroke="url(#gaugeGradient)" strokeWidth="10" fill="none" strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={strokeDashoffset} className="transition-all duration-1000" />
         <defs>
           <linearGradient id="gaugeGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="#7c3aed" />
+            <stop offset="0%" stopColor="#3B82F6" />
             <stop offset="100%" stopColor="#06b6d4" />
           </linearGradient>
         </defs>
@@ -435,11 +435,11 @@ export default function StockDetailPage({ params }: { params: Promise<{ ticker: 
               <div className="h-64">
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={priceChartData}>
-                    <defs><linearGradient id="priceGradient" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#7c3aed" stopOpacity={0.3} /><stop offset="95%" stopColor="#7c3aed" stopOpacity={0} /></linearGradient></defs>
-                    <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: "#a1a1aa", fontSize: 12 }} />
-                    <YAxis axisLine={false} tickLine={false} tick={{ fill: "#a1a1aa", fontSize: 12 }} domain={["auto", "auto"]} tickFormatter={(v) => `$${v.toFixed(0)}`} />
-                    <Tooltip contentStyle={{ backgroundColor: "#141417", border: "1px solid #27272a", borderRadius: "8px" }} formatter={(value: number) => [`$${value.toFixed(2)}`, "Price"]} />
-                    <Area type="monotone" dataKey="price" stroke="#7c3aed" strokeWidth={2} fill="url(#priceGradient)" />
+                    <defs><linearGradient id="priceGradient" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#3B82F6" stopOpacity={0.3} /><stop offset="95%" stopColor="#3B82F6" stopOpacity={0} /></linearGradient></defs>
+                    <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: "#8B949E", fontSize: 12 }} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fill: "#8B949E", fontSize: 12 }} domain={["auto", "auto"]} tickFormatter={(v) => `$${v.toFixed(0)}`} />
+                    <Tooltip contentStyle={{ backgroundColor: "#121821", border: "1px solid #1E2A3A", borderRadius: "8px" }} formatter={(value: number) => [`$${value.toFixed(2)}`, "Price"]} />
+                    <Area type="monotone" dataKey="price" stroke="#3B82F6" strokeWidth={2} fill="url(#priceGradient)" />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
@@ -451,7 +451,7 @@ export default function StockDetailPage({ params }: { params: Promise<{ ticker: 
         <TabsContent value="coverage" className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             <Card><CardHeader><CardTitle>Analyst Count</CardTitle></CardHeader><CardContent className="flex flex-col items-center"><div className="text-5xl font-bold text-primary">{stock.analystCount}</div><p className="text-muted-foreground mt-2">Active Analysts</p></CardContent></Card>
-            <Card><CardHeader><CardTitle>Coverage vs Peers</CardTitle></CardHeader><CardContent><div className="h-48"><ResponsiveContainer width="100%" height="100%"><BarChart data={coverageData} layout="vertical"><XAxis type="number" axisLine={false} tickLine={false} /><YAxis type="category" dataKey="name" axisLine={false} tickLine={false} tick={{ fill: "#a1a1aa", fontSize: 12 }} /><Tooltip contentStyle={{ backgroundColor: "#141417", border: "1px solid #27272a", borderRadius: "8px" }} /><Bar dataKey="value" fill="#7c3aed" radius={[0, 4, 4, 0]} /></BarChart></ResponsiveContainer></div></CardContent></Card>
+            <Card><CardHeader><CardTitle>Coverage vs Peers</CardTitle></CardHeader><CardContent><div className="h-48"><ResponsiveContainer width="100%" height="100%"><BarChart data={coverageData} layout="vertical"><XAxis type="number" axisLine={false} tickLine={false} /><YAxis type="category" dataKey="name" axisLine={false} tickLine={false} tick={{ fill: "#8B949E", fontSize: 12 }} /><Tooltip contentStyle={{ backgroundColor: "#121821", border: "1px solid #1E2A3A", borderRadius: "8px" }} /><Bar dataKey="value" fill="#3B82F6" radius={[0, 4, 4, 0]} /></BarChart></ResponsiveContainer></div></CardContent></Card>
             <Card><CardHeader><CardTitle>Analyst Ratings</CardTitle></CardHeader><CardContent><div className="h-48"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={ratingsData} cx="50%" cy="50%" innerRadius={40} outerRadius={60} paddingAngle={5} dataKey="value">{ratingsData.map((entry, index) => (<Cell key={`cell-${index}`} fill={entry.color} />))}</Pie><Tooltip /></PieChart></ResponsiveContainer></div><div className="flex justify-center gap-4 mt-2">{ratingsData.map((item) => (<div key={item.name} className="flex items-center gap-2"><div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }} /><span className="text-sm text-muted-foreground">{item.name}</span></div>))}</div></CardContent></Card>
           </div>
           <Card><CardHeader><CardTitle>Price Targets</CardTitle></CardHeader><CardContent><div className="flex items-center justify-between gap-4"><div className="text-center"><p className="text-sm text-muted-foreground">Low</p><p className="text-xl font-mono font-semibold text-destructive">${(stock.price * 0.7).toFixed(2)}</p></div><div className="flex-1 h-2 bg-secondary rounded-full relative"><div className="absolute h-4 w-1 bg-foreground rounded-full -top-1" style={{ left: "30%" }} /><div className="absolute h-4 w-1 bg-primary rounded-full -top-1" style={{ left: "50%" }} /></div><div className="text-center"><p className="text-sm text-muted-foreground">High</p><p className="text-xl font-mono font-semibold text-success">${(stock.price * 1.5).toFixed(2)}</p></div></div><div className="flex justify-center mt-4"><div className="text-center"><p className="text-sm text-muted-foreground">Median Target</p><p className="text-2xl font-mono font-bold">${(stock.price * 1.15).toFixed(2)}</p></div></div></CardContent></Card>
@@ -466,7 +466,7 @@ export default function StockDetailPage({ params }: { params: Promise<{ ticker: 
           </div>
           <Card>
             <CardHeader><CardTitle>Volume History</CardTitle><p className="text-sm text-muted-foreground">Last 30 trading days (from market data)</p></CardHeader>
-            <CardContent><div className="h-64">{volumeHistoryLoading ? (<div className="h-full flex items-center justify-center text-muted-foreground">Loading volume history…</div>) : volumeHistory.length === 0 ? (<div className="h-full flex items-center justify-center text-muted-foreground">No volume history available.</div>) : (<ResponsiveContainer width="100%" height="100%"><BarChart data={volumeHistory}><XAxis dataKey="date" axisLine={false} tickLine={false} tickFormatter={(v) => (v ? new Date(v).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "")} /><YAxis axisLine={false} tickLine={false} tickFormatter={(v) => `${(v / 1e6).toFixed(1)}M`} /><Tooltip contentStyle={{ backgroundColor: "#141417", border: "1px solid #27272a", borderRadius: "8px" }} labelFormatter={(v) => (v ? new Date(v).toLocaleDateString() : "")} formatter={(value: number) => [formatVolume(value), "Volume"]} /><Bar dataKey="volume" fill="#06b6d4" radius={[4, 4, 0, 0]} /></BarChart></ResponsiveContainer>)}</div></CardContent>
+            <CardContent><div className="h-64">{volumeHistoryLoading ? (<div className="h-full flex items-center justify-center text-muted-foreground">Loading volume history…</div>) : volumeHistory.length === 0 ? (<div className="h-full flex items-center justify-center text-muted-foreground">No volume history available.</div>) : (<ResponsiveContainer width="100%" height="100%"><BarChart data={volumeHistory}><XAxis dataKey="date" axisLine={false} tickLine={false} tickFormatter={(v) => (v ? new Date(v).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "")} /><YAxis axisLine={false} tickLine={false} tickFormatter={(v) => `${(v / 1e6).toFixed(1)}M`} /><Tooltip contentStyle={{ backgroundColor: "#121821", border: "1px solid #1E2A3A", borderRadius: "8px" }} labelFormatter={(v) => (v ? new Date(v).toLocaleDateString() : "")} formatter={(value: number) => [formatVolume(value), "Volume"]} /><Bar dataKey="volume" fill="#06b6d4" radius={[4, 4, 0, 0]} /></BarChart></ResponsiveContainer>)}</div></CardContent>
           </Card>
         </TabsContent>
 
