@@ -226,17 +226,32 @@ def fetch_one_ticker(ticker: str):
 
 # ===================== UPSERT HELPERS =====================
 
-def _execute_with_retry(execute_fn, batch_label: str):
-    for attempt in range(UPSERT_RETRIES):
+def _execute_with_retry(execute_fn, batch_label: str, max_retries=None):
+    retries = max_retries or UPSERT_RETRIES
+    for attempt in range(retries):
         try:
             execute_fn()
             return
         except Exception as e:
             err_str = str(type(e).__name__) + ": " + str(e)
-            is_retryable = ("disconnect" in err_str.lower() or "502" in err_str or "500" in err_str or "APIError" in type(e).__name__ or "JSON could not be generated" in err_str)
-            if is_retryable and attempt < UPSERT_RETRIES - 1:
+            err_lower = err_str.lower()
+            is_retryable = (
+                "disconnect" in err_lower
+                or "502" in err_str or "500" in err_str or "503" in err_str
+                or "APIError" in type(e).__name__
+                or "JSON could not be generated" in err_str
+                or "ssl" in err_lower
+                or "readerror" in err_lower
+                or "readtimeout" in err_lower
+                or "bad_record_mac" in err_lower
+                or "connection" in err_lower
+                or "timeout" in err_lower
+                or "reset by peer" in err_lower
+                or "broken pipe" in err_lower
+            )
+            if is_retryable and attempt < retries - 1:
                 wait = UPSERT_DELAY_SEC * (2 ** attempt)
-                print(f"  Supabase error ({batch_label}), retry in {wait:.0f}s: {err_str[:80]}...")
+                print(f"  ⚠ Transient error ({batch_label}), retry {attempt+1}/{retries-1} in {wait:.0f}s: {err_str[:120]}")
                 time.sleep(wait)
             else:
                 raise
@@ -611,10 +626,28 @@ def run_stock_profile_generation():
 
     print(f"Writing {len(all_texts)} chunks...")
     documents = [Document(content=text, embedding=embeddings[i].tolist(), meta={"ticker": ticker, "source_type": "stock_profile", "form_type": None, "section": section, "filing_date": None}) for i, (text, (ticker, section)) in enumerate(zip(all_texts, all_meta))]
-    for i in range(0, len(documents), 100):
-        store.write_documents(documents[i:i+100], policy=DuplicatePolicy.OVERWRITE)
-        if (i + 100) % 500 == 0 or i + 100 >= len(documents):
-            print(f"  Written {min(i+100, len(documents))}/{len(documents)}")
+
+    WRITE_BATCH = 100
+    written_total = 0
+    for i in range(0, len(documents), WRITE_BATCH):
+        batch = documents[i:i+WRITE_BATCH]
+        for attempt in range(3):
+            try:
+                store.write_documents(batch, policy=DuplicatePolicy.OVERWRITE)
+                written_total += len(batch)
+                break
+            except Exception as e:
+                if attempt < 2:
+                    print(f"  ⚠ Write failed at {i}, reconnecting (attempt {attempt+1}): {str(e)[:80]}")
+                    time.sleep(2 * (attempt + 1))
+                    try:
+                        store = PgvectorDocumentStore(connection_string=Secret.from_token(PG_CONN_STRING), table_name="haystack_documents", embedding_dimension=384, vector_function="cosine_similarity", recreate_table=False, search_strategy="hnsw")
+                    except Exception:
+                        pass
+                else:
+                    print(f"  ❌ Failed to write batch at {i} after 3 attempts: {str(e)[:80]}")
+        if (i + WRITE_BATCH) % 500 == 0 or i + WRITE_BATCH >= len(documents):
+            print(f"  Written {written_total}/{len(documents)}")
 
     print(f"\n  Final count: {store.count_documents()}")
     print(f"✅ Profiles generated in {time.time()-start:.0f}s\n")
@@ -809,15 +842,16 @@ def run_quick_hypothesis_generation():
 
         # Upsert partial analysis
         try:
+            empty_case = json.dumps({"title": "", "points": []})
             record = {
                 "ticker": ticker,
                 "hypothesis": result["hypothesis"],
                 "confidence": result["confidence"],
-                "bull_case": None,
-                "base_case": None,
-                "bear_case": None,
-                "catalysts": None,
-                "risks": None,
+                "bull_case": result.get("bull_case") or empty_case,
+                "base_case": result.get("base_case") or empty_case,
+                "bear_case": result.get("bear_case") or empty_case,
+                "catalysts": result.get("catalysts") or json.dumps([]),
+                "risks": result.get("risks") or json.dumps([]),
                 "debate_transcript": None,
                 "news_context": context.get("news", []),
                 "model_used": OPENROUTER_MODEL,
