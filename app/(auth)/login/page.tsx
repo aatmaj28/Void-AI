@@ -10,7 +10,6 @@ import { Sun, Moon, Mail, AlertCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Logo } from "@/components/logo"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { signIn } from "next-auth/react"
 
 function AnimatedBackground() {
     return null
