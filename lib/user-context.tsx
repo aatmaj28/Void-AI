@@ -31,7 +31,9 @@ export function UserProvider({ children }: { children: ReactNode }) {
             const email = session.user.email ?? ""
             const name = session.user.name ?? ""
             const [firstName, ...rest] = name.split(" ")
-            setUserState({ email, firstName, lastName: rest.join(" ") })
+            const oauthUser = { email, firstName, lastName: rest.join(" ") }
+            setUserState(oauthUser)
+            localStorage.setItem("void_user", JSON.stringify(oauthUser))
             setIsLoading(false)
             return
         }

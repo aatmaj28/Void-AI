@@ -1,5 +1,6 @@
 import NextAuth from "next-auth"
 import Google from "next-auth/providers/google"
+import { supabase } from "@/lib/supabase"
 
 // Support both GOOGLE_CLIENT_ID/SECRET (v4-style) and AUTH_GOOGLE_ID/SECRET (v5 inferred)
 const googleClientId =
@@ -25,7 +26,28 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     error: "/login",
   },
   callbacks: {
-    async signIn() {
+    async signIn({ user, account }) {
+      // When signing in with Google, ensure the user exists in the Supabase users table
+      if (account?.provider === "google" && user.email) {
+        const { data: existing } = await supabase
+          .from("users")
+          .select("id")
+          .eq("email", user.email)
+          .single()
+
+        if (!existing) {
+          const nameParts = (user.name || "").split(" ")
+          const firstName = nameParts[0] || ""
+          const lastName = nameParts.slice(1).join(" ") || ""
+
+          await supabase.from("users").insert({
+            email: user.email,
+            first_name: firstName,
+            last_name: lastName,
+            password: null,
+          })
+        }
+      }
       return true
     },
     async redirect({ url, baseUrl }) {
