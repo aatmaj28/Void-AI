@@ -4,8 +4,8 @@ import { Inter, JetBrains_Mono } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
 import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "@/components/ui/toaster"
+import { AuthSessionProvider } from "@/components/session-provider"
 import { UserProvider } from "@/lib/user-context"
-import { SessionProvider } from "next-auth/react"
 import { WatchlistProvider } from "@/lib/watchlist-context"
 import { PageTransition } from "@/components/page-transition"
 import "./globals.css"
@@ -61,7 +61,7 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <SessionProvider>
+          <AuthSessionProvider>
             <UserProvider>
               <WatchlistProvider>
                 <PageTransition>
@@ -69,7 +69,7 @@ export default function RootLayout({
                 </PageTransition>
               </WatchlistProvider>
             </UserProvider>
-          </SessionProvider>
+          </AuthSessionProvider>
         </ThemeProvider>
         <Toaster />
         <Analytics />
