@@ -9,6 +9,7 @@ import { Sun, Moon, Mail, AlertCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Logo } from "@/components/logo"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { signIn } from "next-auth/react"
 
 function AnimatedBackground() {
     return null
@@ -91,11 +92,11 @@ function LoginPageContent() {
                                 </Link>
                             </Button>
 
-                            {/* Google Login Button - Disabled for now */}
+                            {/* Google Login Button */}
                             <Button
                                 variant="outline"
-                                className="w-full h-12 bg-muted text-muted-foreground border-border cursor-not-allowed opacity-50"
-                                disabled
+                                className="w-full h-12 bg-background hover:bg-accent text-foreground border-border hover:border-primary/50 transition-all duration-300"
+                                onClick={() => signIn("google", { callbackUrl: "/dashboard" })}
                             >
                                 <div className="flex items-center justify-center gap-3">
                                     <svg className="h-5 w-5" viewBox="0 0 24 24">
