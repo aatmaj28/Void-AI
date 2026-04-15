@@ -130,6 +130,7 @@ function SummaryCard({
 }
 
 function MiniSparkline({ data }: { data: number[] }) {
+  if (!data || data.length === 0) return null
   const chartData = data.map((value, index) => ({ index, value }))
   const isPositive = data[data.length - 1] >= data[0]
 
@@ -435,8 +436,8 @@ export default function DashboardPage() {
                   <AreaChart data={trendData}>
                     <defs>
                       <linearGradient id="opportunityGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.3} />
-                        <stop offset="95%" stopColor="#3B82F6" stopOpacity={0} />
+                        <stop offset="5%" stopColor="#14B8A6" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="#14B8A6" stopOpacity={0} />
                       </linearGradient>
                     </defs>
                     <XAxis
@@ -452,8 +453,8 @@ export default function DashboardPage() {
                     />
                     <Tooltip
                       contentStyle={{
-                        backgroundColor: "#121821",
-                        border: "1px solid #1E2A3A",
+                        backgroundColor: "#0A0C0C",
+                        border: "1px solid #1A1C1C",
                         borderRadius: "8px",
                       }}
                       labelStyle={{ color: "#fafafa" }}
@@ -461,7 +462,7 @@ export default function DashboardPage() {
                     <Area
                       type="monotone"
                       dataKey="opportunities"
-                      stroke="#3B82F6"
+                      stroke="#14B8A6"
                       strokeWidth={2}
                       fill="url(#opportunityGradient)"
                     />

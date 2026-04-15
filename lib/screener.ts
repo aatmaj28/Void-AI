@@ -65,7 +65,7 @@ export async function saveScreen(
 
   if (error) {
     console.error("Error saving screen:", error)
-    throw new Error(error.message)
+    throw new Error(error.message ?? "Failed to save screen")
   }
 
   return data as SavedScreen
@@ -76,6 +76,6 @@ export async function deleteScreen(id: string): Promise<void> {
 
   if (error) {
     console.error("Error deleting screen:", error)
-    throw new Error(error.message)
+    throw new Error(error.message ?? "Failed to delete screen")
   }
 }
