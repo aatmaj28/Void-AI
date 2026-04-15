@@ -1,130 +1,516 @@
 # VOID AI
 
-> **We find alpha in the void**  
-> Discover under-covered stocks where market activity is high but analyst attention is low.
+> **We find alpha in the void.**
+> An AI-powered investment intelligence platform that discovers under-covered stocks where market activity is high but analyst attention is low.
 
-Void AI is a full-stack investment intelligence platform that combines market data, analyst coverage signals, and AI-assisted workflows to surface actionable opportunities.
+Void AI combines real-time market data, SEC filings, multi-agent AI debate, and retrieval-augmented generation (RAG) to surface actionable investment opportunities that traditional coverage misses.
 
-## What You Get
+**Live App:** Deployed on Vercel (frontend) + Railway (RAG backend) + Supabase (database)
+**Course:** CS5130 -- Applied Programming and Data Processing for AI | Northeastern University | Spring 2026
+**Team:** Aatmaj Amol Salunke, Vijwal Mahendrakar
 
-- **Coverage Gap Detection**: Finds stocks with strong activity and weak coverage.
-- **Opportunity Scoring**: Ranks names by gap score and supporting metrics.
-- **Dashboard & Heatmaps**: Visual overview of trends, sectors, and priority opportunities.
-- **Advanced Screener**: Filter by sector, market cap, analyst coverage, and score thresholds.
-- **Watchlists**: Save and organize tickers for ongoing tracking.
-- **Alerts**: Personalized alerts for gap changes, volume spikes, and new opportunities.
-- **Explore & Chat**: RAG-driven research flow for deeper ticker investigation.
-- **Authentication & Profiles**: Email-based auth + user profile/settings pages.
-- **Crypto Page**: Separate crypto-focused view integrated into app navigation.
+---
+
+## Table of Contents
+
+- [Core Concept](#core-concept)
+- [Architecture Overview](#architecture-overview)
+- [Key Features](#key-features)
+  - [Coverage Gap Detection and Scoring](#1-coverage-gap-detection-and-scoring)
+  - [Multi-Agent AI Debate System](#2-multi-agent-ai-debate-system)
+  - [RAG-Powered Research Chat](#3-rag-powered-research-chat)
+  - [MCP Integrations](#4-mcp-integrations-model-context-protocol)
+  - [Stock Comparison](#5-stock-comparison)
+  - [Signal Validation / Backtesting](#6-signal-validation--backtesting)
+  - [Dashboard and Visualizations](#7-dashboard-and-visualizations)
+  - [Advanced Screener](#8-advanced-screener)
+  - [Watchlists and Alerts](#9-watchlists-and-alerts)
+  - [Portfolio Tracking](#10-portfolio-tracking)
+  - [Authentication](#11-authentication)
+- [Daily Data Pipeline](#daily-data-pipeline)
+- [Tech Stack](#tech-stack)
+- [Database Schema](#database-schema)
+- [Application Routes](#application-routes)
+- [Local Development](#local-development)
+- [Deployment](#deployment)
+- [Repository Layout](#repository-layout)
+
+---
+
+## Core Concept
+
+Most stock analysis platforms focus on heavily-covered blue-chip stocks. Void AI flips that approach -- it identifies stocks with **strong market activity** (volume, price momentum, market cap) but **weak analyst coverage** (few analysts, no recent reports). This "coverage gap" represents a potential information asymmetry where informed investors can find opportunities before Wall Street catches up.
+
+The platform computes a proprietary **Gap Score** for 1,700+ stocks across S&P 500, S&P 400, and Russell 2000 universes, then layers AI-driven analysis on top to help users make informed decisions.
+
+---
+
+## Architecture Overview
+
+```
+                          Users
+                            |
+                            v
+               +-------------------------+
+               |    Vercel (Frontend)     |
+               |  Next.js 16 + React 19  |
+               |   TypeScript + Tailwind  |
+               +--------+---+------------+
+                        |   |
+          Next.js API   |   |  RAG API calls
+          routes        |   |
+                        v   v
+               +-------------------------+
+               |   Railway (RAG Service)  |
+               |   FastAPI + CrewAI       |
+               |   Haystack RAG Pipelines |
+               |   MCP Tool Integrations  |
+               +--------+----------------+
+                        |
+         +--------------+--------------+
+         |              |              |
+         v              v              v
+   +-----------+  +-----------+  +-----------+
+   | OpenRouter|  | HuggingFace|  | External  |
+   | (LLM)    |  | (Embeddings)|  | APIs     |
+   | Mistral  |  | bge-small  |  | Finnhub  |
+   | Medium   |  | en-v1.5    |  | SEC EDGAR|
+   +-----------+  +-----------+  | Tavily   |
+                                 | yfinance |
+                                 +-----------+
+                        |
+                        v
+               +-------------------------+
+               |  Supabase (Postgres)    |
+               |  + pgvector extension   |
+               |  22 tables, 19 migrations|
+               +-------------------------+
+```
+
+---
+
+## Key Features
+
+### 1. Coverage Gap Detection and Scoring
+
+The core scoring engine processes 1,700+ stocks daily and computes four metrics:
+
+| Score | Weight | What It Measures |
+|-------|--------|-----------------|
+| **Coverage Score** | 50% | How few analysts cover the stock relative to peers |
+| **Activity Score** | 30% | Volume trends, price momentum (30-day lookback) |
+| **Quality Score** | 20% | Market cap tier, exchange quality, data availability |
+| **Gap Score** | Composite | Weighted combination -- higher = bigger opportunity |
+
+Stocks are categorized into opportunity types: **High Priority**, **Growth**, **Value**, **Emerging**, and **Speculative** based on their score profile and market characteristics.
+
+The engine also detects **coverage momentum** -- tracking whether analyst attention is increasing or decreasing over time -- and supports **ML-learned weights** via Ridge regression and XGBoost optimization from historical return data.
+
+### 2. Multi-Agent AI Debate System
+
+Every stock analysis is generated by a team of 5 autonomous AI agents using **CrewAI**, running a structured 2-round debate:
+
+| Agent | Role |
+|-------|------|
+| **Bull Analyst** | Advocates for upside potential, finds positive catalysts |
+| **Bear Analyst** | Argues risks and red flags, challenges bull thesis |
+| **Fundamental Researcher** | Neutral fact-finder -- pulls SEC filings, news, metrics |
+| **Debate Moderator** | Summarizes key agreements and disagreements |
+| **Investment Strategist** | Synthesizes debate into structured investment thesis |
+
+**Debate Workflow (9 tasks, 2 rounds):**
+
+1. **Phase 1 -- Independent Research** (Tasks 1-3, run in parallel): Bull, Bear, and Researcher independently analyze the stock using RAG-retrieved SEC filings, company news, and market data.
+2. **Phase 2 -- Round 1** (Tasks 4-5): Bear challenges Bull's thesis with counter-arguments; Bull defends and rebuts.
+3. **Phase 2 -- Round 2** (Tasks 6-7): Bull challenges Bear's risk assessment; Bear defends with evidence.
+4. **Phase 3 -- Synthesis** (Tasks 8-9): Moderator summarizes the debate; Strategist produces a structured JSON output with hypothesis, confidence score, bull/base/bear cases, catalysts, and risks.
+
+The full debate transcript is preserved and displayed to users, providing complete transparency into the AI's reasoning process. Results are cached in the `ai_analyses` table and refreshed when gap scores change significantly.
+
+### 3. RAG-Powered Research Chat
+
+The Explore page provides an AI chat interface backed by a **Haystack v2** retrieval pipeline with hybrid search across multiple data sources:
+
+**Data Sources:**
+- **SEC 10-K Filings** -- chunked, embedded, and stored in Supabase pgvector. Retrieved via vector similarity search.
+- **Stock Profiles** -- narrative summaries generated daily from market data and analyst coverage metrics.
+- **Live Web Search** -- triggered automatically for time-sensitive queries (earnings, recent news) via Tavily MCP.
+- **Company News** -- Finnhub API providing the 5 most recent headlines per stock.
+
+**Two Retrieval Modes:**
+- **Focused Mode** -- ticker-specific hybrid retrieval returning top 6 SEC chunks + 2 stock profile chunks. Used when a user asks about a specific stock.
+- **Global Mode** -- cross-universe search returning 15 diverse chunks across all stocks. Used for broad market questions.
+
+**Streaming:** Responses stream token-by-token via Server-Sent Events (SSE), with source citations displayed alongside each response.
+
+### 4. MCP Integrations (Model Context Protocol)
+
+Void AI integrates two MCP tool servers that extend the AI's ability to access real-time external information:
+
+**Tavily Web Search MCP** (`tavily-mcp`)
+- Provides live web search capabilities to the RAG pipeline
+- Automatically triggered when queries contain time-sensitive keywords (earnings, news, recent, today)
+- Returns structured results with title, URL, and description
+- Runs as a Node.js MCP server process
+
+**SEC EDGAR MCP** (custom implementation)
+- Provides programmatic access to SEC's public EDGAR database
+- Three tools:
+  - `get_recent_filings(ticker, form_types)` -- retrieves metadata for 10-K, 10-Q, and 8-K filings
+  - `get_filing_text(document_url)` -- extracts raw text from filing documents
+  - `get_sec_chunks(ticker, query, top_k)` -- returns query-relevant excerpts from filings
+- Rate-limited to 10 requests/second per SEC courtesy guidelines
+- Caches CIK (Central Index Key) lookups for performance
+
+### 5. Stock Comparison
+
+A side-by-side comparison tool for evaluating two stocks simultaneously:
+
+- **Summary Cards** -- current price, change, market cap, volume, P/E, 52-week range, analyst count, gap score, sector
+- **30-Day Price Overlay** -- area chart plotting both stocks on a shared timeline
+- **Score Comparison** -- grouped bar chart comparing Gap, Activity, Quality, and Coverage scores
+- **Head-to-Head Table** -- 13-metric comparison table
+- **AI Comparison Chat** -- RAG-powered chat tab for asking natural language questions about the two stocks
+
+Users select exactly 2 stocks from the Opportunities page and click "Compare" to access this view.
+
+### 6. Signal Validation / Backtesting
+
+A backtesting engine that validates whether gap scores actually predict future stock returns:
+
+**How It Works:**
+1. Stocks are ranked by gap score and divided into 5 quintiles (Q1 = top 20%, Q5 = bottom 20%)
+2. Forward returns are computed from actual market closing prices over 7, 14, and 30-day horizons
+3. Statistical metrics are calculated: Spearman rank correlation, hit rate, Q1-Q5 spread
+
+**Dashboard Visualizations:**
+- Q1-Q5 spread (does the top quintile outperform the bottom?)
+- Spearman correlation (monotonic relationship between score rank and return rank)
+- Hit rate (percentage of Q1 stocks beating the median)
+- Signal decay chart (how signal strength changes across time horizons)
+- Quintile bar chart with per-quintile detail grid
+
+If insufficient historical data exists, the engine runs a synthetic backtest using current scores projected against past price data.
+
+### 7. Dashboard and Visualizations
+
+The main dashboard provides a visual overview of the entire opportunity landscape:
+
+- **Summary Cards** -- total opportunities, average gap score, top sector, alert count with trend indicators
+- **Opportunity Trend Chart** -- area chart showing opportunity count over time
+- **Sector Heatmap** -- visual representation of gap scores by sector
+- **Top Opportunities Table** -- ranked list of highest-scoring stocks with sparkline charts
+- **Quick Actions** -- direct links to screener, watchlists, and explore pages
+
+### 8. Advanced Screener
+
+A multi-filter stock screening tool:
+
+- Filter by **sector**, **market cap range**, **analyst count**, **gap score threshold**, **opportunity type**
+- Sort by any metric (gap score, activity, market cap, analyst count)
+- Save screen configurations for quick re-use
+- Export filtered results
+
+### 9. Watchlists and Alerts
+
+**Watchlists:**
+- Create multiple named watchlists
+- Add/remove stocks from any page
+- View sector distribution of watchlist holdings
+- Track performance metrics for watched stocks
+
+**Alerts:**
+- Configure alerts for gap score changes, volume spikes, new opportunities, and coverage changes
+- Email notifications via Nodemailer (Gmail SMTP)
+- In-app alert center with read/unread tracking
+- Unread count badge in sidebar navigation (polls every 30 seconds)
+
+### 10. Portfolio Tracking
+
+- **My Stocks** page for tracking owned positions
+- Performance metrics and visualization
+- Integration with watchlist and alert systems
+
+### 11. Authentication
+
+Three authentication methods:
+
+| Method | Implementation |
+|--------|---------------|
+| **Google OAuth** | NextAuth v5 with Google provider. Auto-creates Supabase user on first sign-in. |
+| **Email + OTP** | Sends verification code via Nodemailer/Gmail. Verifies and creates session. |
+| **Email + Password** | Traditional registration with bcryptjs password hashing. |
+
+Session management via NextAuth with JWT strategy. All authenticated pages redirect to `/login` when session is missing.
+
+---
+
+## Daily Data Pipeline
+
+The pipeline (`scripts/pipeline_daily.py`) runs daily and processes 1,700+ stocks across three universes:
+
+```
+Stage 1: Market Data Fetch
+  |  Fetch 1-year history from yfinance for S&P 500, S&P 400, Russell 2000
+  |  Write to: stock_metrics, market_data, companies, analyst_coverage
+  v
+Stage 2: Scoring Engine
+  |  Compute coverage, activity, quality, and composite gap scores
+  |  Categorize opportunity types
+  |  Detect coverage momentum trends
+  |  Write to: coverage_gap_scores, score_history
+  v
+Stage 3: Stock Profile Generation
+  |  Create narrative summaries from market + analyst data
+  |  Store in RAG document store for retrieval
+  v
+Stage 4: SEC Filing Ingestion
+  |  Fetch latest 10-K per ticker from EDGAR
+  |  Chunk documents (max 15 per filing)
+  |  Embed with BAAI/bge-small-en-v1.5
+  |  Store in sec_documents + sec_chunks (pgvector)
+  v
+Stage 5: Alert Generation
+     Compute alerts for gap changes, volume spikes
+     Send email notifications
+     Write to: alerts table
+```
+
+---
 
 ## Tech Stack
 
 ### Frontend
-- **Next.js 16** (App Router), **React 19**, **TypeScript**
-- **Tailwind CSS 4** + Radix UI components
-- **Recharts** for data visualization
-- **Framer Motion** + Three.js ecosystem (`@react-three/fiber`, `@react-three/drei`) for interactive visuals
+| Technology | Purpose |
+|-----------|---------|
+| Next.js 16 (App Router) | React framework with server-side rendering |
+| React 19 | UI library |
+| TypeScript | Type-safe development |
+| Tailwind CSS 4 | Utility-first styling |
+| Radix UI | Accessible component primitives |
+| Recharts | Charts, heatmaps, and data visualization |
+| Framer Motion | Animations and transitions |
+| Three.js / React Three Fiber | 3D interactive visuals on landing page |
 
-### Backend / Data
-- **Supabase** (Postgres + client library)
-- Next.js API routes for opportunities, stock data, auth OTP, contact, and integrations
-- Python data pipeline scripts for ingestion/scoring/automation
+### Backend
+| Technology | Purpose |
+|-----------|---------|
+| Next.js API Routes | REST endpoints for stock data, auth, and dashboard |
+| FastAPI (Python) | RAG service and AI analysis endpoints |
+| Haystack v2 | RAG retrieval pipelines (focused + global modes) |
+| CrewAI | Multi-agent orchestration for debate system |
+| LiteLLM | LLM provider abstraction layer |
 
-### Auth / Integrations
-- `next-auth` + OAuth support hooks
-- OTP/email flows via Nodemailer (Gmail app password setup)
-- External market/news/research integrations (environment-variable driven)
+### AI and ML
+| Technology | Purpose |
+|-----------|---------|
+| OpenRouter (Mistral Medium 3.1) | LLM inference for agents and RAG responses |
+| BAAI/bge-small-en-v1.5 | 384-dim document and query embeddings |
+| HuggingFace Inference Router | Hosted embedding inference (free tier) |
+| scikit-learn / XGBoost | ML weight optimization for scoring engine |
+| MCP SDK | Model Context Protocol tool integrations |
 
-## Core Application Routes
+### Data and Storage
+| Technology | Purpose |
+|-----------|---------|
+| Supabase (Postgres) | Primary database with 22+ tables |
+| pgvector | Vector similarity search for RAG |
+| yfinance | Market data and company fundamentals |
+| Finnhub API | Stock news and analyst ratings |
+| SEC EDGAR | 10-K/10-Q filing retrieval |
+| Tavily | Web search via MCP |
 
-- `/` - Landing page with product overview
-- `/dashboard` - Opportunity and alerts overview
-- `/opportunities` - Ranked opportunity list
-- `/screener` - Advanced filtering and saved screen workflows
-- `/watchlist` - User watchlists and saved tickers
-- `/alerts` - Alert center and preferences
-- `/explore` - Research/chat experience
-- `/stock/[ticker]` - Ticker detail pages
-- `/settings` - User settings and account controls
-- `/profile` - User profile
-- `/crypto` - Crypto section
+### Auth and Infrastructure
+| Technology | Purpose |
+|-----------|---------|
+| NextAuth v5 (Auth.js) | Authentication framework |
+| Google OAuth 2.0 | Social login |
+| Nodemailer / Gmail SMTP | OTP and alert emails |
+| bcryptjs | Password hashing |
+| Vercel | Frontend hosting and deployment |
+| Railway | RAG service hosting |
+
+---
+
+## Database Schema
+
+19 migrations defining the following tables:
+
+**Stock Data:**
+`companies`, `stock_metrics`, `market_data`
+
+**Analyst Coverage:**
+`analyst_coverage`, `analyst_coverage_history`
+
+**Scoring:**
+`coverage_gap_scores`, `score_history`, `ml_learned_weights`
+
+**RAG and SEC:**
+`sec_documents`, `sec_chunks` (pgvector embeddings)
+
+**AI Analysis:**
+`ai_analyses` (cached debate outputs with full transcript)
+
+**User Management:**
+`users`, `profiles`
+
+**User Features:**
+`watchlists`, `saved_screens`, `alert_settings`, `alerts`
+
+**Backtesting:**
+`backtest_results`, `backtest_summary`
+
+**LLM Validation:**
+`llm_validations`
+
+Migrations are versioned under `supabase/migrations/` and should be applied sequentially when onboarding a fresh environment.
+
+---
+
+## Application Routes
+
+### Public
+| Route | Description |
+|-------|-------------|
+| `/` | Landing page with product overview and interactive 3D visuals |
+| `/login` | Login page (Google OAuth, email/password, OTP) |
+| `/register` | Account registration |
+
+### Authenticated
+| Route | Description |
+|-------|-------------|
+| `/dashboard` | Opportunity overview, trends, sector heatmap, alerts summary |
+| `/opportunities` | Ranked coverage gap opportunities with filters and sorting |
+| `/screener` | Advanced multi-filter stock screener |
+| `/explore` | RAG-driven AI research chat (global and ticker-focused) |
+| `/stock/[ticker]` | Detailed stock analysis -- metrics, charts, AI debate, SEC filings, chat |
+| `/compare` | Side-by-side stock comparison with AI chat |
+| `/backtest` | Signal validation dashboard with quintile analysis |
+| `/portfolio` | Portfolio tracking (My Stocks) |
+| `/watchlist` | Watchlist management with sector distribution |
+| `/alerts` | Alert center and notification preferences |
+| `/crypto` | Cryptocurrency section |
+| `/profile` | User profile management |
+| `/settings` | App settings and API key configuration |
+
+### API Endpoints
+| Endpoint | Description |
+|----------|-------------|
+| `/api/opportunities` | Fetch ranked opportunities |
+| `/api/stock/[ticker]` | Stock detail data |
+| `/api/stock/[ticker]/news` | Company news (Finnhub) |
+| `/api/stock/[ticker]/history` | Historical price/volume data |
+| `/api/stock/[ticker]/sec-filings` | SEC filing metadata |
+| `/api/backtest` | Backtest results |
+| `/api/dashboard/history` | Historical opportunity snapshots |
+| `/api/auth/*` | Authentication endpoints (NextAuth, OTP, login, register) |
+| `/api/profile` | User profile CRUD |
+| `/api/contact` | Contact form |
+
+---
 
 ## Local Development
 
-### 1) Install dependencies
+### Prerequisites
+- Node.js 20+
+- Python 3.11+
+- pnpm
+
+### 1. Install dependencies
 
 ```bash
 pnpm install
 ```
 
-### 2) Configure environment variables
+For the RAG service:
+```bash
+cd rag-service
+pip install -r requirements.txt
+```
 
-Create `.env.local` in the project root.
+### 2. Configure environment variables
+
+Create `.env.local` in the project root:
 
 | Variable | Required | Purpose |
-|---|---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | Yes (frontend) | Browser Supabase client URL |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Yes (frontend) | Browser Supabase anon key |
-| `SUPABASE_URL` | Yes (server/scripts) | Server-side Supabase URL |
-| `SUPABASE_ANON_KEY` | Yes (server/scripts) | Server-side Supabase anon key |
-| `NEXT_PUBLIC_RAG_API_URL` | Optional | RAG backend URL (defaults to localhost) |
-| `FINNHUB_API_KEY` | Optional/Feature-based | Stock news API access |
-| `SEC_USER_AGENT` | Optional/Feature-based | SEC API user-agent identifier |
-| `GMAIL_USER` | Optional/Feature-based | Outbound email account |
-| `GMAIL_APP_PASSWORD` | Optional/Feature-based | App password for mail transport |
-| `AUTH_GOOGLE_ID` / `GOOGLE_CLIENT_ID` | Optional | Google OAuth client id |
-| `AUTH_GOOGLE_SECRET` / `GOOGLE_CLIENT_SECRET` | Optional | Google OAuth client secret |
+|----------|----------|---------|
+| `SUPABASE_URL` | Yes | Supabase project URL |
+| `SUPABASE_ANON_KEY` | Yes | Supabase anonymous key |
+| `NEXT_PUBLIC_SUPABASE_URL` | Yes | Browser-side Supabase URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Yes | Browser-side Supabase key |
+| `NEXTAUTH_SECRET` | Yes | NextAuth session encryption |
+| `NEXTAUTH_URL` | Yes | App base URL (http://localhost:3000) |
+| `AUTH_GOOGLE_ID` | Yes | Google OAuth client ID |
+| `AUTH_GOOGLE_SECRET` | Yes | Google OAuth client secret |
+| `NEXT_PUBLIC_RAG_API_URL` | Optional | RAG service URL (defaults to localhost:8000) |
+| `OPENROUTER_API_KEY` | Optional | LLM inference via OpenRouter |
+| `OPENROUTER_MODEL` | Optional | Model ID (default: mistralai/mistral-medium-3.1) |
+| `HF_API_TOKEN` | Optional | HuggingFace embedding inference |
+| `TAVILY_API_KEY` | Optional | Web search MCP |
+| `FINNHUB_API_KEY` | Optional | Stock news API |
+| `SEC_USER_AGENT` | Optional | SEC EDGAR user-agent string |
+| `GMAIL_USER` | Optional | Email notifications sender |
+| `GMAIL_APP_PASSWORD` | Optional | Gmail app password for SMTP |
 
-### 3) Start development server
+### 3. Start the development server
 
 ```bash
 pnpm dev
 ```
 
-App runs on [http://localhost:3000](http://localhost:3000).
+App runs at [http://localhost:3000](http://localhost:3000).
 
-## Available Scripts
+### 4. Start the RAG service (optional)
 
 ```bash
-pnpm dev           # Start dev server
-pnpm build         # Build for production
-pnpm start         # Run production build
-pnpm lint          # Lint project
-pnpm db:show-migration
+cd rag-service
+uvicorn rag.api:app --reload --port 8000
 ```
 
-## Database and Migrations
+### 5. Run the data pipeline (optional)
 
-SQL migrations are versioned under `supabase/migrations/`.
+```bash
+python scripts/pipeline_daily.py
+```
 
-Recent schema additions include:
-- Saved screens
-- Watchlists
-- Users and profiles
+---
 
-If you are onboarding a fresh environment, apply these migrations before running the app features that depend on them.
+## Deployment
 
-## Deployment Notes (Vercel + Supabase)
+| Component | Platform | Trigger |
+|-----------|----------|---------|
+| **Frontend** | Vercel | Push to `main` branch |
+| **RAG Service** | Railway | Push to `main` branch |
+| **Database** | Supabase | Managed Postgres + pgvector |
 
-- `main` is treated as production and triggers Vercel deploys.
-- Ensure **Production** env vars include:
-  - `NEXT_PUBLIC_SUPABASE_URL`
-  - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-  - plus server-side vars needed by API routes
-- Missing `NEXT_PUBLIC_*` Supabase keys causes client runtime errors on pages like dashboard.
+The RAG service runs via `uvicorn rag.api:app` with a health check at `GET /health`. Railway is configured with Node.js 20 and Python 3.11 via nixpacks.
+
+---
 
 ## Repository Layout
 
-```text
-app/                    Next.js routes (landing, app pages, auth, APIs)
-components/             Reusable UI and feature components
-lib/                    Data clients, API helpers, app utilities
-scripts/                Data ingestion, scoring, automation scripts
-supabase/migrations/    SQL migrations
 ```
-
-## Team
-
-**Developers:** Aatmaj Amol Salunke, Vijwal Mahendrakar  
-**Course:** CS5130 - Applied Programming and Data Processing for AI  
-**Institution:** Northeastern University (Spring 2026)
+app/                          Next.js application
+  (app)/                      Authenticated pages (dashboard, stock, compare, etc.)
+  api/                        API routes (opportunities, stock, auth, backtest)
+  landing page                Public landing page
+components/                   Reusable UI components (sidebar, navbar, charts)
+lib/                          Client utilities (rag-chat, analysis-api, opportunities)
+rag-service/                  Python RAG + AI analysis backend
+  rag/
+    api.py                    FastAPI endpoints (/chat, /analyze)
+    pipelines.py              Haystack RAG retrieval pipelines
+    crew_analysis.py          CrewAI 5-agent debate system
+    mcp_search.py             Tavily web search MCP integration
+    mcp_sec.py                SEC EDGAR MCP integration
+scripts/                      Data pipeline and utilities
+  pipeline_daily.py           Main daily pipeline orchestrator
+  run_scoring_engine.py       Gap score computation
+  generate_stock_profiles.py  RAG profile generation
+  ingest_sec_filings.py       SEC 10-K ingestion + embedding
+  backtest_engine.py          Signal validation engine
+  ml_weight_optimizer.py      ML-based weight learning
+  generate_alerts.py          Alert computation + email
+supabase/
+  migrations/                 19 versioned SQL migrations
+```
