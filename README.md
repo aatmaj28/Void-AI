@@ -514,3 +514,16 @@ scripts/                      Data pipeline and utilities
 supabase/
   migrations/                 19 versioned SQL migrations
 ```
+
+---
+
+## Team
+
+| | Name | GitHub |
+|---|---|---|
+| **Developer** | Aatmaj Amol Salunke | [@aatmaj28](https://github.com/aatmaj28) |
+| **Developer** | Vijwal Mahendrakar | [@Vijwalmahen](https://github.com/Vijwalmahen) |
+
+**Course:** CS5130 -- Applied Programming and Data Processing for AI
+**Institution:** Northeastern University, Boston
+**Term:** Spring 2026
