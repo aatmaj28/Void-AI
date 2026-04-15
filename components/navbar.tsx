@@ -23,6 +23,7 @@ import {
   MessageSquare,
   Coins,
   Briefcase,
+  FlaskConical,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -46,6 +47,7 @@ const navItems = [
   { href: "/screener", label: "Screener", icon: Filter },
   { href: "/portfolio", label: "My Stocks", icon: Briefcase },
   { href: "/explore", label: "Explore & Chat", icon: MessageSquare },
+  { href: "/backtest", label: "Signal Validation", icon: FlaskConical },
   { href: "/watchlist", label: "Watchlist", icon: Star },
   { href: "/alerts", label: "Alerts", icon: AlertCircle },
 ]

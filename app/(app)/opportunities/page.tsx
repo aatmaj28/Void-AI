@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import {
   Search,
   Filter,
@@ -13,6 +14,7 @@ import {
   X,
   Plus,
   Info,
+  GitCompare,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -48,6 +50,7 @@ type SortKey = "ticker" | "gapScore" | "activityScore" | "marketCap" | "analystC
 type SortDirection = "asc" | "desc"
 
 function MiniSparkline({ data }: { data: number[] }) {
+  if (!data || data.length === 0) return null
   const chartData = data.map((value, index) => ({ index, value }))
   const isPositive = data[data.length - 1] >= data[0]
 
@@ -142,6 +145,7 @@ function SortHeader({
 }
 
 export default function OpportunitiesPage() {
+  const router = useRouter()
   const [search, setSearch] = useState("")
   const [selectedSector, setSelectedSector] = useState("All")
   const [selectedType, setSelectedType] = useState("All")
@@ -550,9 +554,19 @@ export default function OpportunitiesPage() {
               </Button>
               <Button
                 size="sm"
-                variant="ghost"
-                onClick={() => setSelectedStocks(new Set())}
+                variant={selectedStocks.size === 2 ? "default" : "outline"}
+                className="gap-2"
+                disabled={selectedStocks.size !== 2}
+                onClick={() => {
+                  const tickers = Array.from(selectedStocks).join(",")
+                  router.push(`/compare?tickers=${tickers}`)
+                }}
               >
+                <GitCompare className="h-4 w-4" />
+                Compare
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setSelectedStocks(new Set())}>
+                <X className="h-4 w-4" />
                 Clear
               </Button>
             </CardContent>

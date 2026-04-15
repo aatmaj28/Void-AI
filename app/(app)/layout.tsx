@@ -1,5 +1,5 @@
 import React from "react"
-import { Navbar } from "@/components/navbar"
+import { AppSidebar } from "@/components/app-sidebar"
 import { Footer } from "@/components/footer"
 import { ProtectedApp } from "@/components/protected-app"
 
@@ -10,12 +10,9 @@ export default function AppLayout({
 }) {
   return (
     <ProtectedApp>
-      <div className="min-h-screen flex flex-col bg-background">
-        <Navbar />
-        <main className="flex-1">{children}</main>
-        <Footer />
-      </div>
+      <AppSidebar>
+        <main className="flex-1 min-h-screen">{children}</main>
+      </AppSidebar>
     </ProtectedApp>
   )
 }
-

@@ -40,12 +40,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           const firstName = nameParts[0] || ""
           const lastName = nameParts.slice(1).join(" ") || ""
 
-          await supabase.from("users").insert({
+          const { error: insertError } = await supabase.from("users").insert({
             email: user.email,
             first_name: firstName,
             last_name: lastName,
             password: null,
           })
+          if (insertError) console.error("Failed to create user in Supabase:", insertError)
         }
       }
       return true

@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """
 Daily Pipeline: Fetch market data, run scoring engine, generate RAG stock profiles.
 
@@ -1163,6 +1163,14 @@ def main():
         print("✅ Alert generation complete!")
     except Exception as e:
         print(f"⚠️ Alert generation failed: {e}")
+
+    print("\n" + "=" * 60 + "\nRunning backtest engine...\n" + "=" * 60)
+    try:
+        subprocess.run([sys.executable, "scripts/backtest_engine.py"], check=True)
+        print("✅ Backtest complete!")
+    except Exception as e:
+        print(f"⚠️ Backtest failed: {e}")
+        print("  (All pipeline data is saved — backtest can be run independently)")
 
     print(f"\n✅ Daily pipeline complete!")
 

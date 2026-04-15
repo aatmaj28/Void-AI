@@ -45,7 +45,7 @@ import {
   Tooltip,
 } from "recharts"
 
-const COLORS = ["#3B82F6", "#6366F1", "#22C55E", "#F59E0B", "#EF4444", "#8B5CF6"]
+const COLORS = ["#14B8A6", "#6366F1", "#22C55E", "#F59E0B", "#EF4444", "#2DD4BF"]
 
 function MiniSparkline({ data }: { data: number[] }) {
   const chartData = data.map((value, index) => ({ index, value }))
@@ -284,7 +284,7 @@ export default function WatchlistPage() {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => startRename(currentWatchlist!.id, currentWatchlist!.name)}>
+                    <DropdownMenuItem onClick={() => currentWatchlist && startRename(currentWatchlist.id, currentWatchlist.name)}>
                       <Edit2 className="h-4 w-4 mr-2" />
                       Rename
                     </DropdownMenuItem>
@@ -293,7 +293,7 @@ export default function WatchlistPage() {
                       Export Focus List
                     </DropdownMenuItem>
                     <DropdownMenuItem
-                      onClick={() => deleteWatchlist(currentWatchlist!.id)}
+                      onClick={() => currentWatchlist && deleteWatchlist(currentWatchlist.id)}
                       className="text-destructive focus:bg-destructive/10 focus:text-destructive"
                     >
                       <Trash2 className="h-4 w-4 mr-2" />
@@ -323,7 +323,7 @@ export default function WatchlistPage() {
 
           {watchlistStocks.length > 0 && (
             <Card>
-              <CardHeader pb-2>
+              <CardHeader className="pb-2">
                 <CardTitle className="text-base font-semibold">Sector Distribution</CardTitle>
               </CardHeader>
               <CardContent>
@@ -464,7 +464,7 @@ export default function WatchlistPage() {
                                 variant="ghost"
                                 size="icon"
                                 className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                                onClick={() => removeStock(currentWatchlist!.id, stock.ticker)}
+                                onClick={() => currentWatchlist && removeStock(currentWatchlist.id, stock.ticker)}
                               >
                                 <X className="h-4 w-4" />
                               </Button>

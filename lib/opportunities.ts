@@ -72,7 +72,7 @@ function rowToOpportunity(row: OpportunityRow): Opportunity {
 export async function fetchOpportunities(): Promise<Opportunity[]> {
   const res = await fetch("/api/opportunities", { cache: "no-store" })
   if (!res.ok) {
-    throw new Error(res.status === 500 ? (await res.json().then((b) => b.error)) : res.statusText)
+    throw new Error(res.status === 500 ? (await res.json().then((b) => b.error).catch(() => "Server error")) : res.statusText)
   }
   const data = (await res.json()) as OpportunityRow[]
   return data.map(rowToOpportunity)

@@ -49,7 +49,7 @@ export async function fetchUnreadAlertsCount(email: string): Promise<number> {
     .eq("read", false)
 
   if (error) {
-    console.error("Error fetching unread alerts count:", error)
+    console.error("Error fetching unread alerts count:", error.message || error)
     return 0
   }
 
